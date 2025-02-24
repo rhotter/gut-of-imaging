@@ -1,7 +1,5 @@
 # Grand unified theory of imaging
 
-# Gut of Imaging
-
 ## Using the Data Utilities
 
 To use the data saving/loading functions in your notebooks or scripts:
