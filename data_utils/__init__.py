@@ -45,3 +45,19 @@ def load_svd(modality_name):
         return data['singular_values'], data['parameters']
     except KeyError:
         return data['singular_values'], None
+
+def load_all_svds():
+    """
+    Load all SVD spectrums from the results folder.
+    
+    Returns
+    -------
+    dict
+        Dictionary mapping modality names to tuples of (singular_values, parameters)
+    """
+    results = {}
+    for filename in os.listdir(RESULTS_DIR):
+        if filename.endswith('_svd_spectrum.npz'):
+            modality_name = filename.replace('_svd_spectrum.npz', '')
+            results[modality_name] = load_svd(modality_name)
+    return results
