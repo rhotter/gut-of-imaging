@@ -13,63 +13,58 @@ import matplotlib.pyplot as plt
 from jax import grad, value_and_grad
 import jax
 
+from guti.core import get_voxel_mask, get_sensor_positions_spiral, get_source_positions
+
 #NOTE: There's a bug in jwave, where the gradients are not computed correctly when using FiniteDifferences. Therefore, we use the FourierSeries class instead.
 
-# shell_radius = 0.04  # 40mm radius
-shell_radius = 0.01  # 10mm radius
-thickness = 0.007  # 7mm thickness
+
 def create_medium():
+
   # Simulation parameters
-  # N, dx = (256, 256), (0.5e-3, 0.5e-3)
-  N, dx = (64, 64), (0.5e-3, 0.5e-3)
+  dx_mm = 0.5
+  dx = dx_mm * 1e-3
+
+  tissues_map = get_voxel_mask(dx_mm) #0.5mm resolution
+  N = tissues_map.shape
   domain = Domain(N, dx)
-  # Create a spherical shell with thickness 7mm and speed 2500 m/s at the shell
-  center = (N[0]//2, N[1]//2)
-  x, y = jnp.meshgrid(jnp.arange(N[0]), jnp.arange(N[1]), indexing='ij')
-  radius = jnp.sqrt((x - center[0])**2 + (y - center[1])**2) * dx[0]  # Convert to meters
-  shell_mask = (jnp.abs(radius - shell_radius) <= thickness/2)
-  speed = jnp.where(shell_mask, 2500., 1500.)
+
+  # Set sound speed values based on tissue type
+  # 0: outside (1500 m/s)
+  # 1: brain (1525 m/s)
+  # 2: skull (2400 m/s)
+  # 3: scalp (1530 m/s)
+  speed = jnp.ones_like(tissues_map, dtype=jnp.float32) * 1500.
+  speed = jnp.where(tissues_map == 1, 1525., speed)
+  speed = jnp.where(tissues_map == 2, 2400., speed)
+  speed = jnp.where(tissues_map == 3, 1530., speed)
   sound_speed = FourierSeries(speed, domain)
   # Create density map with same shell mask
-  # Use typical densities: ~1000 kg/m³ for water, ~2400 kg/m³ for the shell material
-  density = jnp.where(shell_mask, 2400., 1000.)
+  # Use typical densities: ~1000 kg/m³ for water, ~2000 kg/m³ for the skull
+  density = jnp.where(tissues_map == 0, 1000., 1000.)
+  density = jnp.where(tissues_map == 1, 1000., 1000.)
+  density = jnp.where(tissues_map == 2, 2000., 1000.)
+  density = jnp.where(tissues_map == 3, 1000., 1000.)
   density_field = FourierSeries(density, domain)
 
   pml_size = 20
   medium = Medium(domain=domain, sound_speed=sound_speed, density=density_field, pml_size=pml_size)
   time_axis = TimeAxis.from_medium(medium, cfl=0.3, t_end=100e-06)
 
-  nx, ny = N
-  center_x, center_y = nx // 2, ny // 2
-  radius = shell_radius - thickness*1.1
-  dx = domain.dx
-  radius_voxel = radius/dx[0]
+  brain_mask = tissues_map == 1
+  skull_mask = tissues_map == 2
+  scalp_mask = tissues_map == 3
 
-  x = jnp.arange(nx)
-  y = jnp.arange(ny)
-  X, Y = jnp.meshgrid(x, y, indexing='ij')
+  return domain, medium, time_axis, brain_mask, skull_mask, scalp_mask
 
-  # Calculate distances from center point
-  distances = jnp.sqrt((X - center_x)**2 + (Y - center_y)**2)
-
-  brain_mask = distances <= radius_voxel
-
-  return domain, medium, time_axis, brain_mask
-
-def create_sources_receivers(domain, time_axis):
+def create_sources_receivers(domain, time_axis, freq_Hz=0.5e6):
   # Create a 128x128 square of sources centered in x and at y=25
   N = domain.N
-  # x_start = (N[0] - 128) // 2  # Center the square horizontally
-  # x_coords = jnp.arange(x_start, x_start + 128)
-  # x_pos = x_coords
-  # y_pos = jnp.full(128, 25)  # Fixed y position at 25
   x_start = N[0] // 4  # Center the square horizontally
   x_coords = jnp.arange(x_start, x_start + N[0] // 2)
   x_pos = x_coords
   y_pos = jnp.full(N[0] // 2, N[1] // 4)  # Fixed y position at 25
 
-  freq_hz = 0.5e6
-  signal = jnp.sin(freq_hz*time_axis.to_array())
+  signal = jnp.sin(freq_Hz*time_axis.to_array())
   signal = signal.at[400:].set(0)
   signals = jnp.stack([signal] * (N[0] // 2))  # One signal for each source point
   sources = Sources(positions=(x_pos, y_pos), signals=signals, dt=time_axis.dt, domain=domain)
@@ -86,7 +81,7 @@ def create_sources_receivers(domain, time_axis):
 
   return sources, sensors, sensors_all, source_mask, receivers_mask
 
-domain, medium_original, time_axis, brain_mask = create_medium()
+domain, medium_original, time_axis, brain_mask, skull_mask, scalp_mask = create_medium()
 
 sources, sensors, sensors_all, source_mask, receivers_mask = create_sources_receivers(domain, time_axis)
 
@@ -102,9 +97,10 @@ def solver_receiver(medium, sources):
 # %%
 
 def plot_medium(medium, source_mask, receivers_mask):
+  N = medium.domain.N
   # Plot the speed of sound map
   plt.figure(figsize=(10, 8))
-  plt.imshow(medium.sound_speed.on_grid, cmap='viridis')
+  plt.imshow(medium.sound_speed.on_grid[N[0]//2, :, :,0], cmap='viridis')
   plt.colorbar(label='Speed of Sound (m/s)')
   plt.title('Speed of Sound Distribution')
   plt.xlabel('x (grid points)')
@@ -113,7 +109,7 @@ def plot_medium(medium, source_mask, receivers_mask):
 
   # Plot the source locations
   plt.figure(figsize=(10, 8))
-  plt.imshow(source_mask[0].T, cmap='binary', label='Sources')
+  plt.imshow(source_mask[0, N[0]//2, :, :].T, cmap='binary', label='Sources')
   plt.title('Source Locations')
   plt.xlabel('x (grid points)')
   plt.ylabel('y (grid points)')
@@ -122,7 +118,7 @@ def plot_medium(medium, source_mask, receivers_mask):
 
   # Plot the receivers locations
   plt.figure(figsize=(10, 8))
-  plt.imshow(receivers_mask[:, :].T, cmap='binary', label='Receivers')
+  plt.imshow(receivers_mask[N[0]//2, :, :].T, cmap='binary', label='Receivers')
   plt.title('Receivers Locations')
   plt.xlabel('x (grid points)')
   plt.ylabel('y (grid points)')
@@ -146,14 +142,14 @@ plot_medium(medium_original, source_mask, receivers_mask)
 
 # Plot of the forward simulation for sanity check
 N = domain.N
-pressure_0 = solver_all(medium_original, sources).reshape(-1, N[0], N[1], 1)
+pressure_0 = solver_all(medium_original, sources).reshape(-1, N[0], N[1], N[2], 1)
 pressure_0_numpy = np.array(pressure_0)
 pml_size = medium_original.pml_size
 
 # Plot a slice at a specific time step (e.g., middle of the simulation)
 time_step = pressure_0_numpy.shape[0] - 1  # Last time step
 plt.figure(figsize=(10, 8))
-plt.imshow(pressure_0_numpy[time_step, pml_size:-pml_size, pml_size:-pml_size, 0].T, cmap='seismic')
+plt.imshow(pressure_0_numpy[time_step, N[0]//2, pml_size:-pml_size, pml_size:-pml_size, 0].T, cmap='seismic')
 plt.colorbar(label='Pressure')
 plt.title(f'Pressure field at time step {time_step}')
 plt.xlabel('x')
@@ -273,7 +269,7 @@ speed2 = jnp.array(np.copy(medium_original.sound_speed.on_grid[...,0].at[brain_m
 
 # Plot the speed of sound map
 plt.figure(figsize=(10, 8))
-plt.imshow(speed2, cmap='viridis')
+plt.imshow(speed2[N[0]//2, :, :], cmap='viridis')
 plt.colorbar(label='Speed of Sound (m/s)')
 plt.title('Speed of Sound Distribution')
 plt.xlabel('x (grid points)')
@@ -294,7 +290,7 @@ print(f"Gradient min: {gradient.min()}")
 
 # Plot the gradient
 plt.figure(figsize=(10, 8))
-plt.imshow(gradient[pml_size:-pml_size, pml_size:-pml_size].T, cmap='seismic')
+plt.imshow(gradient[N[0]//2, pml_size:-pml_size, pml_size:-pml_size].T, cmap='seismic')
 plt.colorbar(label='Gradient')
 plt.title('Gradient of objective with respect to sound speed')
 plt.xlabel('x')

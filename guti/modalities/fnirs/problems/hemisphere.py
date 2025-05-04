@@ -2,8 +2,9 @@ import numpy as np
 from medium import Medium
 from sensor_geometry import SensorGeometry
 
-# head constants
-HEAD_RADIUS_MM = 70
+from guti.core import SCALP_RADIUS
+
+HEAD_RADIUS_MM = SCALP_RADIUS
 
 
 def hemisphere_medium(

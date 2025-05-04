@@ -2,7 +2,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.colors import ListedColormap
-from guti.core import brain_radius, skull_radius, scalp_radius, get_source_positions, get_sensor_positions, get_sensor_positions_spiral, get_voxel_mask, get_source_positions_halton
+from guti.core import BRAIN_RADIUS, SKULL_RADIUS, SCALP_RADIUS, get_source_positions, get_sensor_positions, get_sensor_positions_spiral, get_voxel_mask, get_source_positions_halton
 
 
 def visualize_brain_model(sources=None, sensors=None, field=None, resolution=1, alpha=0.2, figsize=(10, 8)):
@@ -39,9 +39,9 @@ def visualize_brain_model(sources=None, sensors=None, field=None, resolution=1, 
     nx, ny, nz = mask.shape
     
     # Create coordinate grids
-    x = np.linspace(0, (brain_radius * 2), nx)
-    y = np.linspace(0, (brain_radius * 2), ny)
-    z = np.linspace(0, brain_radius, nz)
+    x = np.linspace(0, (BRAIN_RADIUS * 2), nx)
+    y = np.linspace(0, (BRAIN_RADIUS * 2), ny)
+    z = np.linspace(0, BRAIN_RADIUS, nz)
     X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
     
     # Visualize the three layers if no field is provided
@@ -132,9 +132,9 @@ def plot_slice(field, slice_dim='z', slice_index=None, mask=None, resolution=1, 
     nx, ny, nz = field.shape
     
     # Create coordinate grids
-    x = np.linspace(-brain_radius / resolution, brain_radius / resolution, nx)
-    y = np.linspace(-brain_radius / resolution, brain_radius / resolution, ny)
-    z = np.linspace(0, brain_radius / resolution, nz)
+    x = np.linspace(-BRAIN_RADIUS / resolution, BRAIN_RADIUS / resolution, nx)
+    y = np.linspace(-BRAIN_RADIUS / resolution, BRAIN_RADIUS / resolution, ny)
+    z = np.linspace(0, BRAIN_RADIUS / resolution, nz)
     
     # Set default slice index to middle if not provided
     if slice_index is None:
