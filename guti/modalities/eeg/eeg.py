@@ -1,6 +1,6 @@
 # %%
 import numpy as np
-import mne
+import modalities.meg.meg as meg
 import matplotlib.pyplot as plt
 from pathlib import Path
 
@@ -10,7 +10,7 @@ from pathlib import Path
 
 # %%
 # Set up the directory for storing MNE sample data
-subjects_dir = mne.datasets.sample.data_path() / "subjects"
+subjects_dir = meg.datasets.sample.data_path() / "subjects"
 
 # %% [markdown]
 # ## Create sample EEG data with standard 10-20 montage
@@ -19,35 +19,35 @@ subjects_dir = mne.datasets.sample.data_path() / "subjects"
 # Create sample data with 10-20 electrode positions
 ch_names = "Fz Cz Pz Oz Fp1 Fp2 F3 F4 F7 F8 C3 C4 T7 T8 P3 P4 P7 P8 O1 O2".split()
 data = np.random.RandomState(0).randn(len(ch_names), 1000)
-info = mne.create_info(ch_names, 1000.0, "eeg")
-raw = mne.io.RawArray(data, info)
+info = meg.create_info(ch_names, 1000.0, "eeg")
+raw = meg.io.RawArray(data, info)
 
 # %% [markdown]
 # ## Set up the head model and source space
 
 # %%
 # Download fsaverage files
-fs_dir = mne.datasets.fetch_fsaverage(verbose=True)
+fs_dir = meg.datasets.fetch_fsaverage(verbose=True)
 subjects_dir = Path(fs_dir).parent
 
 # Set up the source space
-src = mne.setup_source_space(
+src = meg.setup_source_space(
     "fsaverage", spacing="oct6", subjects_dir=subjects_dir, add_dist=False
 )
 
 # Get the BEM solution
 conductivity = (0.3, 0.006, 0.3)  # for three layers
-model = mne.make_bem_model(
+model = meg.make_bem_model(
     "fsaverage", ico=4, conductivity=conductivity, subjects_dir=subjects_dir
 )
-bem = mne.make_bem_solution(model)
+bem = meg.make_bem_solution(model)
 
 # %% [markdown]
 # ## Set up the montage and compute the forward solution
 
 # %%
 # Setup the montage
-montage = mne.channels.make_standard_montage("standard_1020")
+montage = meg.channels.make_standard_montage("standard_1020")
 raw.set_montage(montage)
 
 # Compute transformation matrix
@@ -55,12 +55,12 @@ fiducials = "estimated"  # get fiducials from the standard montage
 trans = "fsaverage"  # use fsaverage transformation
 
 # Compute forward solution
-fwd = mne.make_forward_solution(
+fwd = meg.make_forward_solution(
     raw.info, trans=trans, src=src, bem=bem, eeg=True, mindist=5.0
 )
 # %%
 # Convert to fixed orientation
-fwd_fixed = mne.convert_forward_solution(fwd, force_fixed=True, surf_ori=True)
+fwd_fixed = meg.convert_forward_solution(fwd, force_fixed=True, surf_ori=True)
 
 # %% [markdown]
 # ## Visualize the lead field for a specific electrode
@@ -111,7 +111,7 @@ rh_path = surf_path / "rh.pial"
 
 # Read surfaces using PyVista
 def read_surface(filepath):
-    coords, faces = mne.read_surface(str(filepath))
+    coords, faces = meg.read_surface(str(filepath))
     mesh = pv.PolyData()
     mesh.points = coords
     mesh.faces = np.hstack((3 * np.ones((len(faces), 1)), faces)).astype(np.int32)
@@ -164,7 +164,7 @@ plt.show()
 
 # %%
 import numpy as np
-import mne
+import modalities.meg.meg as meg
 import pyvista as pv
 from scipy.spatial import cKDTree
 
@@ -219,14 +219,14 @@ plotter.show()
 # %%
 import mne.viz
 
-mne.viz.set_3d_backend("pyvistaqt")
+meg.viz.set_3d_backend("pyvistaqt")
 
 # %%
 # Create an stc with one time point, so data has shape=(n_vertices_total, n_times)
 data_stc = np.concatenate([leadfield_lh, leadfield_rh])
 data_stc = data_stc[:, np.newaxis]  # shape => (n_sources, 1)
 
-stc = mne.SourceEstimate(
+stc = meg.SourceEstimate(
     data_stc,
     vertices=vertices,  # [lh_vertno, rh_vertno]
     tmin=0.0,
