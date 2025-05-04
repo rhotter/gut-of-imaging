@@ -247,7 +247,7 @@ plt.semilogy(s1, 'o-', markersize=4, label='A_1')
 plt.semilogy(s2, 'o-', markersize=4, label='A_2')
 plt.xlabel('Singular Value Index')
 plt.ylabel('Singular Value (log scale)')
-plt.title('Singular Value Spectra of Forward Mapping Matrices')
+plt.title('Singular Value Spectra')
 plt.grid(True)
 plt.legend()
 plt.show()
@@ -261,12 +261,5 @@ from guti.data_utils import save_svd
 
 save_svd(s1, 'meg_opm')
 save_svd(s2, 'meg_squid')
-
-
-# %%
-
-
-# %%
-
 
 
