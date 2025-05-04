@@ -8,6 +8,7 @@ squid_ratio = 3/10
 
 # %%
 import numpy as np
+from guti.core import get_sensor_positions_spiral, get_source_positions
 
 def sarvas_formula(r, r0):
     """
@@ -47,7 +48,59 @@ def sarvas_formula(r, r0):
     
     return M
 
+def compute_forward_matrix(n_sensors=100, n_sources=100):
+    """
+    Compute the MEG forward matrix using Sarvas's formula.
+    
+    Parameters
+    ----------
+    n_sensors : int
+        Number of sensors to use
+    n_sources : int
+        Number of source dipoles to use
+        
+    Returns
+    -------
+    A : ndarray, shape (3*n_sensors, 3*n_sources)
+        Forward matrix that maps dipole moments to sensor measurements
+    """
+    # Get sensor and source positions using core.py functions
+    sensors = get_sensor_positions_spiral(n_sensors)
+    sources = get_source_positions(n_sources)
+    
+    # Initialize forward matrix
+    A = np.zeros((3*n_sensors, 3*n_sources))
+    
+    # Compute lead field matrix for each sensor-source pair
+    for i, sensor in enumerate(sensors):
+        for j, source in enumerate(sources):
+            # Compute lead field matrix
+            M = sarvas_formula(sensor, source)
+            
+            # Fill in the corresponding 3x3 block in the forward matrix
+            A[3*i:3*(i+1), 3*j:3*(j+1)] = M
+            
+    return A
 
+def compute_svd(n_sensors=100, n_sources=100):
+    """
+    Compute the singular value decomposition of the MEG forward matrix.
+    
+    Parameters
+    ----------
+    n_sensors : int
+        Number of sensors to use
+    n_sources : int
+        Number of source dipoles to use
+        
+    Returns
+    -------
+    s : ndarray
+        Singular values of the forward matrix
+    """
+    A = compute_forward_matrix(n_sensors, n_sources)
+    _, s, _ = np.linalg.svd(A, full_matrices=False)
+    return s
 
 # %%
 def generate_sphere_grid(n=20, angle_range=50):
