@@ -12,20 +12,19 @@ n_sensors_default = 100
 
 def get_source_positions(n_sources: int = n_sources_default) -> np.ndarray:
     # sample random positions inside a hemisphere
-    # Generate random positions in a cube and keep only those inside the hemisphere
     positions = np.zeros((n_sources, 3))
     count = 0
-    
+
     while count < n_sources:
         # Sample random point in a cube with side length 2*brain_radius
         x = np.random.uniform(0, brain_radius * 2)
         y = np.random.uniform(0, brain_radius * 2)
         z = np.random.uniform(0, brain_radius * 2)  # Only positive z for hemisphere
-        
+
         # Check if point is inside the hemisphere
-        distance_from_origin = np.sqrt((x - brain_radius) **2 + (y - brain_radius)**2 + z**2)
-        
-        if distance_from_origin <= brain_radius:
+        distance = np.sqrt((x - brain_radius) ** 2 + (y - brain_radius) ** 2 + z ** 2)
+
+        if distance <= brain_radius:
             positions[count] = [x, y, z]
             count += 1
     return positions
@@ -83,3 +82,27 @@ def get_voxel_mask(resolution: float = 1) -> np.ndarray:
     mask[(distances > skull_radius) & (distances <= scalp_radius)] = 3
     
     return mask
+
+def get_source_positions_halton(n_sources: int = n_sources_default) -> np.ndarray:
+    # Deterministic uniform sampling inside a hemisphere via a low-discrepancy sequence
+    def van_der_corput(num: int, base: int = 2) -> float:
+        vdc, denom = 0.0, 1
+        while num > 0:
+            num, rem = divmod(num, base)
+            denom *= base
+            vdc += rem / denom
+        return vdc
+
+    positions = np.zeros((n_sources, 3))
+    for i in range(n_sources):
+        # radial coordinate via uniform volume sampling
+        u = (i + 0.5) / n_sources
+        r = brain_radius * u ** (1/3)
+        # direction via Hammersley sequence (bases 2 and 3)
+        theta = np.arccos(van_der_corput(i, 3))
+        phi = 2 * np.pi * van_der_corput(i, 2)
+        x = r * np.sin(theta) * np.cos(phi) + brain_radius
+        y = r * np.sin(theta) * np.sin(phi) + brain_radius
+        z = r * np.cos(theta)
+        positions[i] = [x, y, z]
+    return positions

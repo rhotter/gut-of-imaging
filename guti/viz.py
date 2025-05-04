@@ -1,12 +1,8 @@
-# %%
-%load_ext autoreload
-%autoreload 2
-
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.mplot3d import Axes3D
 from matplotlib.colors import ListedColormap
-from guti.core import brain_radius, skull_radius, scalp_radius, get_source_positions, get_sensor_positions, get_sensor_positions_spiral, get_voxel_mask
+from guti.core import brain_radius, skull_radius, scalp_radius, get_source_positions, get_sensor_positions, get_sensor_positions_spiral, get_voxel_mask, get_source_positions_halton
 
 
 def visualize_brain_model(sources=None, sensors=None, field=None, resolution=1, alpha=0.2, figsize=(10, 8)):
@@ -187,13 +183,3 @@ def plot_slice(field, slice_dim='z', slice_index=None, mask=None, resolution=1, 
     ax.set_title(title)
     
     return fig, ax
-
-
-# %%
-sensors = get_sensor_positions_spiral()
-sources = get_source_positions()
-# mask = get_voxel_mask(1)
-
-visualize_brain_model(sources=sources, sensors=sensors)
-
-# %%
