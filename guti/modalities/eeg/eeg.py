@@ -1,6 +1,6 @@
 # %%
 import numpy as np
-import meg
+import modalities.meg.meg as meg
 import matplotlib.pyplot as plt
 from pathlib import Path
 
@@ -164,7 +164,7 @@ plt.show()
 
 # %%
 import numpy as np
-import meg
+import modalities.meg.meg as meg
 import pyvista as pv
 from scipy.spatial import cKDTree
 
