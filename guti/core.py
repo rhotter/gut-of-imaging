@@ -48,16 +48,21 @@ def get_voxel_mask(resolution: float = 1) -> np.ndarray:
     ny = int(2 * brain_radius / resolution)
     nz = int(brain_radius / resolution)
     mask = np.zeros((nx, ny, nz))
-    for i in range(nx):
-        for j in range(ny):
-            for k in range(nz):
-                if np.sqrt(i**2 + j**2 + k**2) <= brain_radius:
-                    mask[i, j, k] = 1
-                elif np.sqrt(i**2 + j**2 + k**2) <= skull_radius:
-                    mask[i, j, k] = 2
-                elif np.sqrt(i**2 + j**2 + k**2) <= scalp_radius:
-                    mask[i, j, k] = 3
-
+    
+    # Create coordinate grids
+    x = np.linspace(-brain_radius, brain_radius, nx)
+    y = np.linspace(-brain_radius, brain_radius, ny)
+    z = np.linspace(0, brain_radius, nz)
+    X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
+    
+    # Calculate distances from origin for all points at once
+    distances = np.sqrt(X**2 + Y**2 + Z**2)
+    
+    # Set mask values based on distances
+    mask[distances <= brain_radius] = 1
+    mask[(distances > brain_radius) & (distances <= skull_radius)] = 2
+    mask[(distances > skull_radius) & (distances <= scalp_radius)] = 3
+    
     return mask
 
 
