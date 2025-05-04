@@ -53,17 +53,17 @@ def visualize_brain_model(sources=None, sensors=None, field=None, resolution=1, 
         # Brain (layer 1)
         brain_points = np.where(mask == 1)
         ax.scatter(X[brain_points], Y[brain_points], Z[brain_points], 
-                  c='red', alpha=alpha, label='Brain')
+                  c='red', alpha=0.01, label='Brain')
         
         # Skull (layer 2)
         skull_points = np.where(mask == 2)
         ax.scatter(X[skull_points], Y[skull_points], Z[skull_points], 
-                  c='black', alpha=alpha, label='Skull')
+                  c='beige', alpha=0.01, label='Skull')
         
         # Scalp (layer 3)
         scalp_points = np.where(mask == 3)
         ax.scatter(X[scalp_points], Y[scalp_points], Z[scalp_points], 
-                  c='bisque', alpha=alpha, label='Scalp')
+                  c='bisque', alpha=0.01, label='Scalp')
     else:
         # Visualize the field
         if field.shape != mask.shape:
