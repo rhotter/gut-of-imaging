@@ -1,13 +1,13 @@
-import jax.numpy as jnp
+import torch
 import numpy as np
 import matplotlib.pyplot as plt
 
 
 def compute_svd_gpu(Jac_cpu):
     # Move data to GPU and compute SVD
-    Jac_gpu = jnp.array(Jac_cpu)  # Move to GPU
-    u, s, vh = jnp.linalg.svd(Jac_gpu, full_matrices=False)
-    s = np.array(s)  # Move results back to CPU for plotting
+    Jac_gpu = torch.tensor(Jac_cpu, device='cuda')  # Move to GPU
+    u, s, vh = torch.linalg.svd(Jac_gpu, full_matrices=False)
+    s = s.cpu().numpy()  # Move results back to CPU for plotting
     return s
 
 
