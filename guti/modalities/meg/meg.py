@@ -1,6 +1,10 @@
+# %%
 import mne
 import numpy as np
 import matplotlib.pyplot as plt
+from guti import core
+# %%
+
 
 def create_sensor_info(n_channels=10, sfreq=1000.0):
     """

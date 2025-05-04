@@ -51,11 +51,14 @@ def get_voxel_mask(resolution: float = 1) -> np.ndarray:
     for i in range(nx):
         for j in range(ny):
             for k in range(nz):
-                if np.sqrt(i**2 + j**2 + k**2) <= brain_radius:
+                x = (i - brain_radius / resolution) * resolution
+                y = (j - brain_radius / resolution) * resolution
+                z = k * resolution
+                if np.sqrt(x**2 + y**2 + z**2) <= brain_radius:
                     mask[i, j, k] = 1
-                elif np.sqrt(i**2 + j**2 + k**2) <= skull_radius:
+                elif np.sqrt(x**2 + y**2 + z**2) <= skull_radius:
                     mask[i, j, k] = 2
-                elif np.sqrt(i**2 + j**2 + k**2) <= scalp_radius:
+                elif np.sqrt(x**2 + y**2 + z**2) <= scalp_radius:
                     mask[i, j, k] = 3
 
     return mask

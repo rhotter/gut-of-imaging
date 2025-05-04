@@ -1,3 +1,6 @@
+# %%
+%load_ext autoreload
+%autoreload 2
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -6,7 +9,7 @@ from matplotlib.colors import ListedColormap
 from guti.core import brain_radius, skull_radius, scalp_radius, get_source_positions, get_sensor_positions, get_voxel_mask
 
 
-def visualize_brain_model(sources=None, sensors=None, field=None, resolution=5, alpha=0.2, figsize=(10, 8)):
+def visualize_brain_model(sources=None, sensors=None, field=None, resolution=1, alpha=0.2, figsize=(10, 8)):
     """
     Visualize the three-layer brain model (brain, skull, scalp) with optional sources, sensors, and field data.
     
@@ -48,9 +51,9 @@ def visualize_brain_model(sources=None, sensors=None, field=None, resolution=5, 
     # Visualize the three layers if no field is provided
     if field is None:
         # Brain (layer 1)
-        # brain_points = np.where(mask == 1)
-        # ax.scatter(X[brain_points], Y[brain_points], Z[brain_points], 
-        #           c='red', alpha=alpha, label='Brain')
+        brain_points = np.where(mask == 1)
+        ax.scatter(X[brain_points], Y[brain_points], Z[brain_points], 
+                  c='red', alpha=alpha, label='Brain')
         
         # Skull (layer 2)
         skull_points = np.where(mask == 2)
@@ -185,3 +188,12 @@ def plot_slice(field, slice_dim='z', slice_index=None, mask=None, resolution=1, 
     
     return fig, ax
 
+
+# %%
+sensors = get_sensor_positions()
+sources = get_source_positions()
+# mask = get_voxel_mask(1)
+
+visualize_brain_model(sources=sources, sensors=sensors)
+
+# %%
