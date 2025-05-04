@@ -40,6 +40,25 @@ def get_sensor_positions(n_sensors: int = n_sensors_default) -> np.ndarray:
     return positions
 
 
+def get_sensor_positions_spiral(n_sensors: int = n_sensors_default) -> np.ndarray:
+    # Deterministic uniform sampling on a hemisphere using a spherical Fibonacci spiral
+    golden_angle = np.pi * (3 - np.sqrt(5))
+    indices = np.arange(n_sensors)
+    # z coordinates uniformly spaced in [0,1)
+    z = (indices + 0.5) / n_sensors
+    # polar angle
+    theta = np.arccos(z)
+    # azimuthal angle using golden angle
+    phi = golden_angle * indices
+    # convert spherical to Cartesian coordinates
+    x = np.sin(theta) * np.cos(phi)
+    y = np.sin(theta) * np.sin(phi)
+    # unit hemisphere points
+    positions = np.stack([x, y, z], axis=1)
+    # scale to scalp_radius and translate to center at (brain_radius, brain_radius, 0)
+    positions = positions * scalp_radius + np.array([brain_radius, brain_radius, 0])
+    return positions
+
 def get_voxel_mask(resolution: float = 1) -> np.ndarray:
     # create a voxel mask for the brain
     # the mask is a 3D array of size (nx, ny, nz)
@@ -64,5 +83,3 @@ def get_voxel_mask(resolution: float = 1) -> np.ndarray:
     mask[(distances > skull_radius) & (distances <= scalp_radius)] = 3
     
     return mask
-
-
