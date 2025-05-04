@@ -7,7 +7,7 @@ name = "data-utils"
 version = "0.1.0"
 description = "Data utility functions for gut-of-imaging project"
 authors = ["Lev Chizhov", "Raffi Hotter", "Thomas Ribeiro", "Guillermo Valle"]
-packages = [{ include = "data_utils" }]
+packages = [{ include = "guti/data_utils" }, { include = "guti" }]
 
 [tool.poetry.dependencies]
 python = "^3.8"
