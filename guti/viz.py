@@ -39,16 +39,20 @@ def visualize_brain_model(sources=None, sensors=None, field=None, resolution=1, 
     nx, ny, nz = mask.shape
     
     # Create coordinate grids
-    x = np.linspace(0, (BRAIN_RADIUS * 2), nx)
-    y = np.linspace(0, (BRAIN_RADIUS * 2), ny)
-    z = np.linspace(0, BRAIN_RADIUS, nz)
+    x = np.linspace(0, (SCALP_RADIUS * 2), nx)
+    y = np.linspace(0, (SCALP_RADIUS * 2), ny)
+    z = np.linspace(0, SCALP_RADIUS, nz)
     X, Y, Z = np.meshgrid(x, y, z, indexing='ij')
-    
     # Visualize the three layers if no field is provided
     if field is None:
-        # Brain (layer 1)
+        # Brain (layer 1) - subsample points for better performance
         brain_points = np.where(mask == 1)
-        ax.scatter(X[brain_points], Y[brain_points], Z[brain_points], 
+        # Convert to array of indices and subsample
+        brain_indices = np.column_stack(brain_points)
+        subsample_rate = 10  # Only use 1/10 of the points
+        subsample_indices = np.random.choice(len(brain_indices), size=len(brain_indices)//subsample_rate, replace=False)
+        brain_points_subsampled = tuple(brain_indices[subsample_indices, i] for i in range(3))
+        ax.scatter(X[brain_points_subsampled], Y[brain_points_subsampled], Z[brain_points_subsampled], 
                   c='red', alpha=0.01, label='Brain')
         
         # Skull (layer 2)
@@ -74,7 +78,6 @@ def visualize_brain_model(sources=None, sensors=None, field=None, resolution=1, 
         sc = ax.scatter(X[points], Y[points], Z[points], 
                        c=field_masked[points], cmap='viridis', alpha=alpha)
         plt.colorbar(sc, ax=ax, label='Field Value')
-    
     # Add sources if provided
     if sources is not None:
         ax.scatter(sources[:, 0], sources[:, 1], sources[:, 2], 

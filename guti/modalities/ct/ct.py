@@ -1,4 +1,3 @@
-
 """
 Simple CT simulation & reconstruction utilities
 ===============================================
@@ -25,7 +24,7 @@ from __future__ import annotations
 import numpy as np
 from skimage.transform import radon, iradon
 
-from guti.core import get_voxel_mask
+from guti.core import get_voxel_mask, get_source_positions, BRAIN_RADIUS
 
 # ----------------------------------------------------------------------
 #  Linear attenuation coefficients (unit: mm⁻¹, but only relative matters)
@@ -34,17 +33,29 @@ MU_AIR: float = 0.00
 MU_SCALP: float = 0.15
 MU_SKULL: float = 0.50
 MU_BRAIN_MEAN: float = 0.20
-MU_BRAIN_STD: float = 0.02
+
+# Gaussian‑blob parameters
+N_SOURCES: int = 100          # number of point sources
+GAUSS_SIGMA: float = 3.0      # mm, spatial spread (FWHM≈2.35σ)
+MU_SOURCE_DELTA: float = 0.10 # added μ at the center of each blob
 
 
 # ----------------------------------------------------------------------
 def build_attenuation_map(
     resolution: float = 1.0,
     slice_index: int | None = None,
-    rng: int | np.random.Generator | None = None,
+    source_positions: np.ndarray | None = None,
+    source_strengths: np.ndarray | None = None,
+    n_sources: int | None = None,
+    source_sigma: float | None = None,
+    rng: int | None = None,
 ) -> np.ndarray:
     """
     Create a 2‑D attenuation map (μ) for an axial slice.
+
+    • Brain voxels start at a uniform ``MU_BRAIN_MEAN``.  
+    • Add Gaussian blobs around specified sources or randomly generated ones.
+    • Skull, scalp, and air retain fixed coefficients.
 
     Parameters
     ----------
@@ -52,8 +63,18 @@ def build_attenuation_map(
         Spatial resolution (mm/voxel) passed to :func:`guti.core.get_voxel_mask`.
     slice_index
         z‑index of the slice (defaults to the central slice).
+    source_positions
+        Array of shape (n_sources, 3) containing (x,y,z) positions of sources in mm.
+        If None, sources will be randomly generated using n_sources and source_sigma.
+    source_strengths
+        Array of shape (n_sources,) containing the peak μ value for each source.
+        If None, defaults to MU_SOURCE_DELTA for all sources.
+    n_sources
+        Number of sources to generate randomly. Only used if source_positions is None.
+    source_sigma
+        Standard deviation of Gaussian blobs in mm. Only used if source_positions is None.
     rng
-        Seed or :class:`numpy.random.Generator` for sampling brain μ values.
+        Seed for deterministic placement of the sources when generating randomly.
 
     Returns
     -------
@@ -66,15 +87,47 @@ def build_attenuation_map(
 
     m2d = mask[:, :, slice_index].astype(np.int8)
 
-    rng = np.random.default_rng(rng)
     mu = np.empty_like(m2d, dtype=np.float32)
-
     mu[m2d == 0] = MU_AIR
     mu[m2d == 3] = MU_SCALP
     mu[m2d == 2] = MU_SKULL
+    mu[m2d == 1] = MU_BRAIN_MEAN  # uniform brain background
 
-    brain_idx = m2d == 1
-    mu[brain_idx] = rng.normal(MU_BRAIN_MEAN, MU_BRAIN_STD, size=brain_idx.sum())
+    # Grid coordinates (mm) for this slice
+    nx, ny = m2d.shape
+    x_mm = np.linspace(-BRAIN_RADIUS, BRAIN_RADIUS, nx)
+    y_mm = np.linspace(-BRAIN_RADIUS, BRAIN_RADIUS, ny)
+    X2, Y2 = np.meshgrid(x_mm, y_mm, indexing="ij")
+
+    # z‑coordinate of this slice
+    nz = get_voxel_mask(resolution).shape[2]
+    z_mm_slice = (slice_index / (nz - 1)) * BRAIN_RADIUS
+
+    # Get source positions and strengths
+    if source_positions is None:
+        if n_sources is None:
+            n_sources = N_SOURCES
+        if source_sigma is None:
+            source_sigma = GAUSS_SIGMA
+        source_positions = get_source_positions(n_sources, rng=rng)
+        source_strengths = np.full(n_sources, MU_SOURCE_DELTA)
+    else:
+        if source_strengths is None:
+            source_strengths = np.full(len(source_positions), MU_SOURCE_DELTA)
+        if len(source_positions) != len(source_strengths):
+            raise ValueError("source_positions and source_strengths must have the same length")
+
+    # Add Gaussian blobs around sources that lie close to this slice
+    sigma2 = source_sigma ** 2
+    for (xs, ys, zs), strength in zip(source_positions, source_strengths):
+        if abs(zs - z_mm_slice) > 3 * source_sigma:  # skip distant sources
+            continue
+        x_phys = xs - BRAIN_RADIUS
+        y_phys = ys - BRAIN_RADIUS
+        gauss = strength * np.exp(
+            -((X2 - x_phys) ** 2 + (Y2 - y_phys) ** 2) / (2 * sigma2)
+        )
+        mu[m2d == 1] += gauss[m2d == 1]
 
     return mu
 
@@ -141,6 +194,8 @@ def demo(
     """
     Convenience routine: forward project & reconstruct a slice.
 
+    Now places Gaussian blobs in the brain region.
+
     Returns
     -------
     truth, sinogram, recon : (ndarray, ndarray, ndarray)
@@ -173,3 +228,5 @@ ax[2].axis("off")
 plt.tight_layout()
 plt.show()
 # %%
+
+

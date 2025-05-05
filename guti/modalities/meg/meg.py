@@ -262,4 +262,37 @@ from guti.data_utils import save_svd
 save_svd(s1, 'meg_opm')
 save_svd(s2, 'meg_squid')
 
+def plot_svd_spectra(n_sensors_list=[50, 100, 200, 500, 1000, 10000], n_sources=100):
+    """
+    Compute and plot SVD spectra for different numbers of sensors.
+    
+    Parameters
+    ----------
+    n_sensors_list : list of int
+        List of different numbers of sensors to compare
+    n_sources : int
+        Number of source dipoles to use
+    """
+    plt.figure(figsize=(10, 6))
+    
+    for n_sensors in n_sensors_list:
+        # Compute forward matrix and SVD
+        A = compute_forward_matrix(n_sensors, n_sources)
+        _, s, _ = np.linalg.svd(A, full_matrices=False)
+        
+        # Plot singular values
+        plt.semilogy(s, label=f'{n_sensors} sensors')
+    
+    plt.xlabel('Singular Value Index')
+    plt.ylabel('Singular Value (log scale)')
+    plt.title('MEG Singular Value Spectra for Different Numbers of Sensors')
+    plt.grid(True)
+    plt.legend()
+    plt.show()
 
+# Example usage:
+plot_svd_spectra()
+
+
+
+# %%
