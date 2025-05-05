@@ -16,32 +16,19 @@ from guti.core import (
 import plotly.graph_objects as go
 
 
-def visualize_sensors(sensors: np.ndarray):
-
+def visualize_sensors(sensor_positions: np.ndarray):
     # Create figure
     fig = go.Figure()
 
-    # Add source positions
+    # Add sensor positions
     fig.add_trace(
         go.Scatter3d(
-            x=sensors.src_pos[:, 0],
-            y=sensors.src_pos[:, 1],
-            z=sensors.src_pos[:, 2],
+            x=sensor_positions[:, 0],
+            y=sensor_positions[:, 1],
+            z=sensor_positions[:, 2],
             mode="markers",
             marker=dict(size=2, symbol="circle", color="red"),
-            name="Sources",
-        )
-    )
-
-    # Add detector positions
-    fig.add_trace(
-        go.Scatter3d(
-            x=sensors.det_pos[:, 0],
-            y=sensors.det_pos[:, 1],
-            z=sensors.det_pos[:, 2],
-            mode="markers",
-            marker=dict(size=2, symbol="circle", color="blue"),
-            name="Detectors",
+            name="Sensors",
         )
     )
 
