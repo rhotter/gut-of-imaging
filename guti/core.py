@@ -40,7 +40,7 @@ def get_sensor_positions(n_sensors: int = N_SENSORS_DEFAULT) -> np.ndarray:
     return positions
 
 
-def get_sensor_positions_spiral(n_sensors: int = N_SENSORS_DEFAULT) -> np.ndarray:
+def get_sensor_positions_spiral(n_sensors: int = N_SENSORS_DEFAULT, offset: float = 0) -> np.ndarray:
     # Deterministic uniform sampling on a hemisphere using a spherical Fibonacci spiral
     golden_angle = np.pi * (3 - np.sqrt(5))
     indices = np.arange(n_sensors)
@@ -56,23 +56,24 @@ def get_sensor_positions_spiral(n_sensors: int = N_SENSORS_DEFAULT) -> np.ndarra
     # unit hemisphere points
     positions = np.stack([x, y, z], axis=1)
     # scale to SCALP_RADIUS and translate to center at (BRAIN_RADIUS, BRAIN_RADIUS, 0)
-    positions = positions * SCALP_RADIUS*1.1 + np.array([SCALP_RADIUS*1.1, SCALP_RADIUS*1.1, 0])
+    positions = positions * (SCALP_RADIUS + offset) + np.array([SCALP_RADIUS, SCALP_RADIUS, 0])
     return positions
 
 
-def get_voxel_mask(resolution: float = 1) -> np.ndarray:
+def get_voxel_mask(resolution: float = 1, offset: float = 0) -> np.ndarray:
     # create a voxel mask for the brain
     # the mask is a 3D array of size (nx, ny, nz)
     # the mask is 1 for the brain, 2 for the skull, 3 for the scalp and 0 for the rest
-    nx = int(2 * SCALP_RADIUS*1.1 / resolution)
-    ny = int(2 * SCALP_RADIUS*1.1 / resolution)
-    nz = int(SCALP_RADIUS*1.1 / resolution)
+    radius = SCALP_RADIUS + offset
+    nx = int(2 * radius / resolution)
+    ny = int(2 * radius / resolution)
+    nz = int(radius / resolution)
     mask = np.zeros((nx, ny, nz))
 
     # Create coordinate grids
-    x = np.linspace(-SCALP_RADIUS*1.1, SCALP_RADIUS*1.1, nx)
-    y = np.linspace(-SCALP_RADIUS*1.1, SCALP_RADIUS*1.1, ny)
-    z = np.linspace(0, SCALP_RADIUS*1.1, nz)
+    x = np.linspace(-radius, radius, nx)
+    y = np.linspace(-radius, radius, ny)
+    z = np.linspace(0, radius, nz)
     X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
 
     # Calculate distances from origin for all points at once
@@ -81,7 +82,7 @@ def get_voxel_mask(resolution: float = 1) -> np.ndarray:
     # Set mask values based on distances
     mask[distances <= BRAIN_RADIUS] = 1
     mask[(distances > BRAIN_RADIUS) & (distances <= SKULL_RADIUS)] = 2
-    mask[(distances > SKULL_RADIUS) & (distances <= SCALP_RADIUS)] = 3
+    mask[(distances > SKULL_RADIUS) & (distances <= radius)] = 3
 
     return mask
 

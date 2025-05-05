@@ -13,7 +13,7 @@ def create_medium():
     # dx_mm = 3
     dx = (dx_mm * 1e-3, dx_mm * 1e-3, dx_mm * 1e-3)
 
-    tissues_map = get_voxel_mask(dx_mm) #0.5mm resolution
+    tissues_map = get_voxel_mask(dx_mm, offset=8) #0.5mm resolution
     N = tuple(tissues_map.shape)
     print(f"Domain size: {N}")
     domain = Domain(N, dx)
@@ -56,7 +56,7 @@ def create_sources_receivers(domain, time_axis, freq_Hz=0.25e6):
     # Create a 128x128 square of sources centered in x and at y=25
     N = domain.N
     dx = domain.dx
-    sensor_positions = get_sensor_positions_spiral()
+    sensor_positions = get_sensor_positions_spiral(offset=8)
     sensor_positions_voxels = jnp.floor(sensor_positions / (jnp.array(dx)*1e3)).astype(jnp.int32)
     x,y,z = sensor_positions_voxels[:, 0], sensor_positions_voxels[:, 1], sensor_positions_voxels[:, 2]
     print(f"Sensor positions: {sensor_positions}")
