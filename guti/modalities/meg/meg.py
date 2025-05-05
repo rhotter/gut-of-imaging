@@ -165,7 +165,7 @@ points_2 = []
 while len(points_1) < n_points or len(points_2) < n_points:
     # Generate random coordinates between -1 and 1
     x = np.random.uniform(-1, 1)
-    y = np.random.uniform(-1, 1) 
+    y = np.random.uniform(-1, 1)
     z = np.random.uniform(-1, 1)
     
     # Check if point is inside unit sphere
