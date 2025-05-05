@@ -2,13 +2,14 @@ import numpy as np
 from medium import Medium
 from sensor_geometry import SensorGeometry
 
-from guti.core import SCALP_RADIUS
+from guti.core import SCALP_RADIUS, N_SENSORS_DEFAULT
+from guti.core import get_sensor_positions_spiral, get_voxel_mask
 
 HEAD_RADIUS_MM = SCALP_RADIUS
+VOXEL_SIZE_MM = 1.0  # Target voxel size in millimeters
 
 
 def hemisphere_medium(
-    voxels_per_dim=150,
     is_3d=False,
 ):
     """
@@ -16,8 +17,6 @@ def hemisphere_medium(
 
     Parameters
     ----------
-    voxels_per_dim : int, optional
-        The number of voxels along each dimension of the medium. Default is 150.
     is_3d : bool, optional
         Whether to create a 3D (True) or 2D (False) medium. Default is False.
 
@@ -26,6 +25,12 @@ def hemisphere_medium(
     medium : Medium
         The medium (2D or 3D)
     """
+    # Compute voxels_per_dim to achieve 1mm voxel size
+    # We need enough voxels to cover the head diameter (2 * HEAD_RADIUS_MM)
+    voxels_per_dim = int(2 * HEAD_RADIUS_MM / VOXEL_SIZE_MM)
+    # Round up to nearest multiple of 2 for better discretization
+    voxels_per_dim = (voxels_per_dim + 1) & ~1
+
     if is_3d:
         nz = voxels_per_dim // 2
     else:
@@ -45,7 +50,6 @@ def hemisphere_medium(
     mus0 = 0.67 / (1 - g)  # background scattering [1/mm]
     refr_index = 1.4  # refractive index
 
-    # turn off the black formatter for this section
     medium.optical_properties = np.array([[0, 0, 1, 1], [mua0, mus0, g, refr_index]])
 
     return medium
@@ -95,7 +99,6 @@ def hemisphere_2d_sensors(noptodes: int, medium: Medium):
     # add a column of zeros to cast as 3D
     src_pos = np.hstack((medium.nz // 2 * np.ones((noptodes, 1)), src_pos))
     det_pos = np.hstack((medium.nz // 2 * np.ones((noptodes, 1)), det_pos))
-    det_pos = np.hstack((det_pos, np.ones((noptodes, 1))))
 
     # Calculate source directions (pointing inward)
     center_point_3d = np.array([medium.nz // 2, 0, medium.nx // 2])
@@ -148,11 +151,9 @@ def hemisphere_3d_sensors(noptodes: int, medium: Medium):
     det_pos[:, 1] = HEAD_RADIUS_MM * x + center_point[1]  # y coordinate
     det_pos[:, 2] = HEAD_RADIUS_MM * z + center_point[2]  # x coordinate
 
-    # Set source positions slightly above detectors (radially outward)
-    offset = 5  # 5mm offset
-    src_pos[:, 0] = (HEAD_RADIUS_MM + offset) * y + center_point[0]
-    src_pos[:, 1] = (HEAD_RADIUS_MM + offset) * x + center_point[1]
-    src_pos[:, 2] = (HEAD_RADIUS_MM + offset) * z + center_point[2]
+    src_pos[:, 0] = HEAD_RADIUS_MM * y + center_point[0]
+    src_pos[:, 1] = HEAD_RADIUS_MM * x + center_point[1]
+    src_pos[:, 2] = HEAD_RADIUS_MM * z + center_point[2]
 
     # Calculate source directions (pointing inward)
     src_dirs = center_point - src_pos
@@ -166,8 +167,3 @@ def hemisphere_3d_sensors(noptodes: int, medium: Medium):
 def hemisphere_2d_medium(*args, **kwargs):
     """Backward compatibility wrapper for 2D medium"""
     return hemisphere_medium(*args, is_3d=False, **kwargs)
-
-
-def hemisphere_3d_medium(*args, **kwargs):
-    """Backward compatibility wrapper for 3D medium"""
-    return hemisphere_medium(*args, is_3d=True, **kwargs)

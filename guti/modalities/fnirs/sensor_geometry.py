@@ -16,7 +16,10 @@ class SensorGeometry:
     src_pos: np.ndarray
     det_pos: np.ndarray
     src_dirs: np.ndarray
+    det_radii: np.ndarray = None
 
     def __post_init__(self):
         self.nsrc = self.src_pos.shape[0]
         self.ndet = self.det_pos.shape[0]
+        if self.det_radii is None:
+            self.det_radii = 3 * np.ones((self.ndet, 1))
