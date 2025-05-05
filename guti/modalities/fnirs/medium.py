@@ -4,7 +4,7 @@ from sensor_geometry import SensorGeometry
 
 
 class Medium:
-    def __init__(self, shape, grid_resolution_mm=1.0, metadata=""):
+    def __init__(self, shape, grid_resolution_mm=1.0):
         self.shape = shape
         self.nz = shape[0]
         self.ny = shape[1]
@@ -12,7 +12,6 @@ class Medium:
         self.volume = np.zeros(shape)
         self.grid_resolution_mm = grid_resolution_mm
         self.optical_properties = np.array([[0, 0, 1, 1]])
-        self.metadata = metadata  # for printing
 
     def add_ball(self, center_mm, radius_mm, val):
         """
@@ -77,8 +76,8 @@ class Medium:
         plt.clim(0.018, 0.022)
         if sensors:
             plt.scatter(
+                sensors.det_pos[:, -1],
                 sensors.det_pos[:, -2],
-                sensors.det_pos[:, -3],
                 c="g",
                 marker="o",
                 label="detectors",
@@ -95,17 +94,3 @@ class Medium:
         plt.xlabel("mm")
         plt.ylabel("mm")
         plt.show()
-
-    def copy(self):
-        """
-        Creates a copy of the current Medium object.
-
-        Returns:
-        --------
-        Medium
-            A new instance of Medium with duplicated properties.
-        """
-        new_medium = Medium(self.shape, self.grid_resolution_mm)
-        new_medium.volume = np.copy(self.volume)
-        new_medium.optical_properties = np.copy(self.optical_properties)
-        return new_medium
