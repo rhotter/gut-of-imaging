@@ -1,89 +1,43 @@
 #%%
+
+# ---- JAX memory behaviour ---------------------------------------------
+import os
+os.environ['XLA_PYTHON_CLIENT_PREALLOCATE'] = 'false'   # ⬅ no 75 % grab
+os.environ['XLA_PYTHON_CLIENT_MEM_FRACTION'] = '1.0'   # optional, 30 %
+# os.environ['XLA_PYTHON_CLIENT_ALLOCATOR'] = 'platform'  # safer allocator
+# os.environ['CUDA_VISIBLE_DEVICES'] = ''                 # ← CPU-only fallback
+# # ------------------------------------------------------------------------
+
 from jax import jit
 
 from jwave import FourierSeries, FiniteDifferences
-from jwave.acoustics.time_varying import simulate_wave_propagation
-from jwave.geometry import Domain, Medium, TimeAxis
-from jwave.utils import load_image_to_numpy
-from jwave.geometry import Sources, Sensors
+from jwave.acoustics.time_varying import simulate_wave_propagation, TimeWavePropagationSettings
+from jwave.geometry import Medium
 import jax.numpy as jnp
 import numpy as np
 import matplotlib.pyplot as plt
 
 from jax import grad, value_and_grad
 import jax
+from jax import vmap
 
-from guti.core import get_voxel_mask, get_sensor_positions_spiral, get_source_positions
+from scipy.sparse.linalg import LinearOperator, svds
+
+from guti.modalities.us.utils import create_medium, create_sources_receivers, plot_medium
+
 
 #NOTE: There's a bug in jwave, where the gradients are not computed correctly when using FiniteDifferences. Therefore, we use the FourierSeries class instead.
 
-
-def create_medium():
-
-  # Simulation parameters
-  dx_mm = 0.5
-  dx = dx_mm * 1e-3
-
-  tissues_map = get_voxel_mask(dx_mm) #0.5mm resolution
-  N = tissues_map.shape
-  domain = Domain(N, dx)
-
-  # Set sound speed values based on tissue type
-  # 0: outside (1500 m/s)
-  # 1: brain (1525 m/s)
-  # 2: skull (2400 m/s)
-  # 3: scalp (1530 m/s)
-  speed = jnp.ones_like(tissues_map, dtype=jnp.float32) * 1500.
-  speed = jnp.where(tissues_map == 1, 1525., speed)
-  speed = jnp.where(tissues_map == 2, 2400., speed)
-  speed = jnp.where(tissues_map == 3, 1530., speed)
-  sound_speed = FourierSeries(speed, domain)
-  # Create density map with same shell mask
-  # Use typical densities: ~1000 kg/m³ for water, ~2000 kg/m³ for the skull
-  density = jnp.where(tissues_map == 0, 1000., 1000.)
-  density = jnp.where(tissues_map == 1, 1000., 1000.)
-  density = jnp.where(tissues_map == 2, 2000., 1000.)
-  density = jnp.where(tissues_map == 3, 1000., 1000.)
-  density_field = FourierSeries(density, domain)
-
-  pml_size = 20
-  medium = Medium(domain=domain, sound_speed=sound_speed, density=density_field, pml_size=pml_size)
-  time_axis = TimeAxis.from_medium(medium, cfl=0.3, t_end=100e-06)
-
-  brain_mask = tissues_map == 1
-  skull_mask = tissues_map == 2
-  scalp_mask = tissues_map == 3
-
-  return domain, medium, time_axis, brain_mask, skull_mask, scalp_mask
-
-def create_sources_receivers(domain, time_axis, freq_Hz=0.5e6):
-  # Create a 128x128 square of sources centered in x and at y=25
-  N = domain.N
-  x_start = N[0] // 4  # Center the square horizontally
-  x_coords = jnp.arange(x_start, x_start + N[0] // 2)
-  x_pos = x_coords
-  y_pos = jnp.full(N[0] // 2, N[1] // 4)  # Fixed y position at 25
-
-  signal = jnp.sin(freq_Hz*time_axis.to_array())
-  signal = signal.at[400:].set(0)
-  signals = jnp.stack([signal] * (N[0] // 2))  # One signal for each source point
-  sources = Sources(positions=(x_pos, y_pos), signals=signals, dt=time_axis.dt, domain=domain)
-
-  # Create a mask for the sources and receivers
-  source_mask = jnp.full((int(time_axis.Nt),) + N, False)
-  source_mask = source_mask.at[:, x_pos, y_pos].set(True)
-  receivers_mask = jnp.full(N, False)
-  receivers_mask = receivers_mask.at[x_pos, y_pos+1].set(True)
-  receiver_positions = jnp.argwhere(receivers_mask)
-
-  sensors = Sensors(positions=tuple((receiver_positions.T).tolist()))
-  sensors_all = Sensors(positions=tuple(jnp.argwhere(jnp.ones(N)).T.tolist()))
-
-  return sources, sensors, sensors_all, source_mask, receivers_mask
+"""Check if JAX is using CUDA."""
+platforms = jax.devices()
+is_cuda = any('cuda' in str(device).lower() for device in platforms)
+print(f"JAX is using CUDA: {is_cuda}")
 
 domain, medium_original, time_axis, brain_mask, skull_mask, scalp_mask = create_medium()
 
-sources, sensors, sensors_all, source_mask, receivers_mask = create_sources_receivers(domain, time_axis)
+sources, sensors, sensors_all, source_mask, receivers_mask = create_sources_receivers(domain, time_axis, freq_Hz=0.15e6)
+
+# settings = TimeWavePropagationSettings(checkpoint=True)
 
 # Compile and create the solver functions
 @jit
@@ -94,77 +48,39 @@ def solver_all(medium, sources):
 def solver_receiver(medium, sources):
   return simulate_wave_propagation(medium, time_axis, sources=sources, sensors=sensors)
 
-# %%
+plot_medium(medium_original, source_mask, sources, time_axis, receivers_mask)
 
-def plot_medium(medium, source_mask, receivers_mask):
-  N = medium.domain.N
-  # Plot the speed of sound map
-  plt.figure(figsize=(10, 8))
-  plt.imshow(medium.sound_speed.on_grid[N[0]//2, :, :,0], cmap='viridis')
-  plt.colorbar(label='Speed of Sound (m/s)')
-  plt.title('Speed of Sound Distribution')
-  plt.xlabel('x (grid points)')
-  plt.ylabel('y (grid points)')
-  plt.show()
-
-  # Plot the source locations
-  plt.figure(figsize=(10, 8))
-  plt.imshow(source_mask[0, N[0]//2, :, :].T, cmap='binary', label='Sources')
-  plt.title('Source Locations')
-  plt.xlabel('x (grid points)')
-  plt.ylabel('y (grid points)')
-  plt.colorbar(label='Source Present')
-  plt.show()
-
-  # Plot the receivers locations
-  plt.figure(figsize=(10, 8))
-  plt.imshow(receivers_mask[N[0]//2, :, :].T, cmap='binary', label='Receivers')
-  plt.title('Receivers Locations')
-  plt.xlabel('x (grid points)')
-  plt.ylabel('y (grid points)')
-  plt.colorbar(label='Receivers Present')
-  plt.show()
-
-  # Plot the signal used for sources
-  signal = sources.signals[0]
-  plt.figure(figsize=(10, 4))
-  plt.plot(time_axis.to_array() * 1e6, signal)  # Convert time to microseconds
-  plt.title('Source Signal')
-  plt.xlabel('Time (μs)')
-  plt.ylabel('Amplitude')
-  plt.grid(True)
-  plt.show()
-
-
-plot_medium(medium_original, source_mask, receivers_mask)
-
-#%%
-
-# Plot of the forward simulation for sanity check
-N = domain.N
-pressure_0 = solver_all(medium_original, sources).reshape(-1, N[0], N[1], N[2], 1)
-pressure_0_numpy = np.array(pressure_0)
 pml_size = medium_original.pml_size
 
-# Plot a slice at a specific time step (e.g., middle of the simulation)
-time_step = pressure_0_numpy.shape[0] - 1  # Last time step
-plt.figure(figsize=(10, 8))
-plt.imshow(pressure_0_numpy[time_step, N[0]//2, pml_size:-pml_size, pml_size:-pml_size, 0].T, cmap='seismic')
-plt.colorbar(label='Pressure')
-plt.title(f'Pressure field at time step {time_step}')
-plt.xlabel('x')
-plt.ylabel('y')
-plt.show()
+#%%
+
+# # Plot of the forward simulation for sanity check
+# N = domain.N
+# pressure_0 = solver_all(medium_original, sources).reshape(-1, N[0], N[1], N[2], 1)
+# pressure_0_numpy = np.array(pressure_0)
+
+# # Plot a slice at a specific time step (e.g., middle of the simulation)
+# time_step = pressure_0_numpy.shape[0] - 1  # Last time step
+# plt.figure(figsize=(10, 8))
+# plt.imshow(pressure_0_numpy[time_step, N[0]//2, pml_size:-pml_size, pml_size:-pml_size, 0].T, cmap='seismic')
+# plt.colorbar(label='Pressure')
+# plt.title(f'Pressure field at time step {time_step}')
+# plt.xlabel('x')
+# plt.ylabel('y')
+# plt.show()
 
 #%%
+
+# settings = TimeWavePropagationSettings(checkpoint=True)
 
 # Jax function to map a speed of sound map to the corresponding pressure field
 def output_field(s, sources, sensors):
     sound_speed2 = FourierSeries(s, domain)
     # Recreate the sound_speed and medium with the new speed
-    density_field = medium_original.density
+    density_field = jax.lax.stop_gradient(medium_original.density)
     medium = Medium(domain=domain, sound_speed=sound_speed2, density=density_field, pml_size=pml_size)
     # Get pressure field
+    # pressure = simulate_wave_propagation(medium, time_axis, sources=sources, sensors=sensors, settings=settings)
     pressure = simulate_wave_propagation(medium, time_axis, sources=sources, sensors=sensors)
     return pressure
 
@@ -173,11 +89,29 @@ def output_field(s, sources, sensors):
 # Define function that converts the waveforms at the receiver sensors, to the final sensor output. In this case, we define the final sensor output to be the arrival time of the waveform for each sensor.
 
 def find_arrival_time(signal2, sources):
-
   signal = sources.signals[0]
   # Cross-correlate with signal to get arrival times
   # Compute cross-correlation in time domain
+  # Run correlation on CPU to avoid GPU segfault
+  # Compute cross-correlation directly on GPU
+  # Avoid using jnp.correlate which can cause segfaults
+  # Implement correlation manually using FFT for better stability
+  # Use time-domain approach to avoid segfaults
+  # correlation = jnp.zeros(len(signal))
+  # for i in range(len(signal)):
+  #   shift = jnp.roll(signal, i)
+  #   correlation = correlation.at[i].set(jnp.sum(signal2 * shift))
+
   correlation = jnp.correlate(signal2, signal, mode='full')[-len(signal):]
+  
+  # Alternative: use numpy for correlation which is more stable
+  # signal2_np = np.array(signal2)
+  # signal_np = np.array(signal)
+  # correlation = jnp.array(np.correlate(signal2_np, signal_np, mode='full'))
+  # correlation = correlation[len(signal)-1:2*len(signal)-1]  # Extract the relevant part
+  # Apply a peak detection to find the maximum correlation
+  max_idx = jnp.argmax(correlation)
+  correlation = correlation / (jnp.max(correlation) + 1e-8)  # Normalize for numerical stability
 
   # Use softmax-based differentiable argmax
   # Temperature parameter controls sharpness of the softmax
@@ -192,7 +126,6 @@ def find_arrival_time(signal2, sources):
 
 print(find_arrival_time(jnp.roll(sources.signals[0], 100), sources))
 
-from jax import vmap
 
 find_arrival_time_vectorized = vmap(lambda signal2: find_arrival_time(signal2, sources))
 
@@ -200,35 +133,120 @@ find_arrival_time_vectorized = vmap(lambda signal2: find_arrival_time(signal2, s
 
 speed = medium_original.sound_speed.on_grid[...,0]
 
-def receiver_output(speed_of_sound_brain):
-    speed_of_sound = speed.at[brain_mask].set(speed_of_sound_brain)
-    pressure = output_field(speed_of_sound, sources, sensors)
-    # Compute Fourier transform along time dimension (axis 0)
-    pressure_fft = jnp.fft.fft(pressure, axis=0)
+contrast_sources_mask = jnp.full(speed.shape, False)
 
-    arrival_times = find_arrival_time_vectorized(pressure[:,:,0].T)
-    # Get peak frequency amplitude
-    peak_freq_amp = jnp.max(jnp.abs(pressure_fft), axis=0)
+# Set the contrast sources mask to be every nth voxel inside the brain mask
+n = 10  # Take every 10th voxel
+brain_indices = jnp.argwhere(brain_mask)
+selected_indices = brain_indices[::n]  # Take every nth index
+
+# Create the contrast sources mask
+contrast_sources_mask = contrast_sources_mask.at[tuple(selected_indices.T)].set(True)
+
+# Print the number of contrast source points
+num_contrast_points = jnp.sum(contrast_sources_mask)
+print(f"Number of contrast source points: {num_contrast_points}")
+
+
+def receiver_output(speed_contrast_sources):
+    speed_of_sound = speed.at[contrast_sources_mask].set(speed_contrast_sources)
+    pressure = output_field(speed_of_sound, sources, sensors)
+
+    # arrival_times = find_arrival_time_vectorized(pressure[:,:,0].T)
+    # peak_freq_amp = jnp.max(jnp.abs(pressure), axis=0)
+
+    pressure_downsampled = pressure[::10,:,0].flatten()
     
     # Combine metrics into single differentiable output
-    return jnp.concatenate([peak_freq_amp.ravel(), arrival_times.ravel()])
+    # return jnp.concatenate([peak_freq_amp.ravel(), arrival_times.ravel()])
+    return pressure_downsampled
 
-speed_brain = speed[brain_mask]
+speed_contrast_sources = speed[contrast_sources_mask]
 
-jacobian = jax.jacobian(receiver_output)(speed_brain)
+#%%
+
+print("Computing Jacobian")
+
+
+# jacobian = jax.jacobian(receiver_output)(speed_contrast_sources)
+# Reduce memory usage by using block-wise Jacobian computation
+# n = speed_contrast_sources.size
+# block_size = 1  # tune empirically based on available memory
+
+# Compute a single row of the Jacobian to avoid memory issues
+# Using a unit vector for the first parameter only
+# unit_vector = jnp.zeros_like(speed_contrast_sources)
+# unit_vector = unit_vector.at[0].set(1.0)
+# y, partial_jacobian = jax.jvp(receiver_output, (speed_contrast_sources,), (unit_vector,))
+# jax.vjp(receiver_output, speed_contrast_sources, jnp.ones_like(receiver_output(speed_contrast_sources)))
+
+#%%
+
+# Create a function that computes JVP for a batch of vectors
+# jac_block = jax.vmap(
+#     lambda v: jax.jvp(receiver_output, (speed_contrast_sources,), (v,))[1]
+# )
+
+# # Create basis vectors in blocks to reduce memory usage
+# basis = jnp.eye(n)
+# # Reshape basis into blocks and compute Jacobian block by block
+# jacobian = jnp.concatenate([
+#     jac_block(basis[:, i:min(i+block_size, n)].T) 
+#     for i in range(0, n, block_size)
+# ], axis=1)
+# Use jacrev instead of jacfwd to save memory
+# jacrev computes the Jacobian row-by-row which is more memory efficient
+# jacobian = jax.jacrev(receiver_output)(speed_contrast_sources)
+# jacobian = jax.linearize(receiver_output, speed_contrast_sources)
+
+# y, pullback = jax.linearize(receiver_output, speed_contrast_sources)
+
+# from scipy.sparse.linalg import LinearOperator, svds
+
+# Forward  product  J @ v
+def J_mv(v):
+    return jax.jvp(receiver_output,
+                   (speed_contrast_sources,),
+                   (v,))[1]
+
+# Adjoint product Jᵀ @ u
+def JT_mv(u):
+    return jax.vjp(receiver_output,
+                   speed_contrast_sources)[1](u)[0]
+
+out_size = receiver_output(speed_contrast_sources).size
+in_size  = speed_contrast_sources.size
+
+J_linop = LinearOperator((out_size, in_size),
+                         matvec=J_mv,
+                         rmatvec=JT_mv,
+                         dtype=np.float32)
+
+_, s, _ = svds(J_linop, k=1000)      # top-20 singular values only
+
+
 # %%
 
-# Compute the singular value spectrum.
+# # Compute the singular value spectrum.
 
-# Save the Jacobian matrix to a file
-np.save('jacobian_amplitude_arrival.npy', np.array(jacobian))
+# import scipy.sparse
+
+# # Save the Jacobian matrix to a file
+# np.save('jacobian_amplitude_arrival.npy', np.array(jacobian))
+# # u, s, vh = np.linalg.svd(np.array(jacobian), full_matrices=False)
+
+# u, s, vh = scipy.sparse.linalg.svds(jacobian, k=1000)
+
 
 # svd
-u, s, vh = jnp.linalg.svd(jacobian)
+# Use numpy's SVD instead of JAX's to avoid GPU solver errors
+# This is more stable for large matrices but will run on CPU
+# Convert back to JAX arrays if needed for downstream operations
+# u, s, vh = jnp.array(u), jnp.array(s), jnp.array(vh)
 
 # Plot singular value spectrum
 plt.figure(figsize=(10, 6))
-plt.semilogy(s, 'o-')
+plt.semilogy(s)
 plt.grid(True)
 plt.xlabel('Index')
 plt.ylabel('Singular Value')
@@ -238,63 +256,65 @@ plt.show()
 #%%
 
 
-# Example of computing gradients of an objective function with respect to the speed of sound map.
-# We need to perturb the speed of sound map so that the gradients are not zero.
+# # Example of computing gradients of an objective function with respect to the speed of sound map.
+# # We need to perturb the speed of sound map so that the gradients are not zero.
 
 
-target = jnp.array(np.array(solver_receiver(medium_original, sources)))
+# target = jnp.array(np.array(solver_receiver(medium_original, sources)))
 
-# Plot the target waveform at a specific point
-plt.figure(figsize=(10, 6))
-plt.plot(target[:,100,0])
-plt.title('Target waveform at point (100,100)')
-plt.xlabel('Time step')
-plt.ylabel('Amplitude')
-plt.grid(True)
-plt.show()
+# # Plot the target waveform at a specific point
+# plt.figure(figsize=(10, 6))
+# plt.plot(target[:,100,0])
+# plt.title('Target waveform at point (100,100)')
+# plt.xlabel('Time step')
+# plt.ylabel('Amplitude')
+# plt.grid(True)
+# plt.show()
 
 
-# Define a function that returns a scalar value from the pressure field
-# @jit
-def objective(s):
+# # Define a function that returns a scalar value from the pressure field
+# # @jit
+# def objective(s):
 
-    pressure = output_field(s, sources, sensors)
+#     pressure = output_field(s, sources, sensors)
 
-    diff = (pressure - target)
+#     diff = (pressure - target)
 
-    # Compute mean squared error
-    return jnp.sum(diff**2)
+#     # Compute mean squared error
+#     return jnp.sum(diff**2)
 
-speed2 = jnp.array(np.copy(medium_original.sound_speed.on_grid[...,0].at[brain_mask].set(1650.)))
+# speed2 = jnp.array(np.copy(medium_original.sound_speed.on_grid[...,0].at[brain_mask].set(1650.)))
 
-# Plot the speed of sound map
-plt.figure(figsize=(10, 8))
-plt.imshow(speed2[N[0]//2, :, :], cmap='viridis')
-plt.colorbar(label='Speed of Sound (m/s)')
-plt.title('Speed of Sound Distribution')
-plt.xlabel('x (grid points)')
-plt.ylabel('y (grid points)')
-plt.show()
+# # Plot the speed of sound map
+# plt.figure(figsize=(10, 8))
+# N = domain.N
+# plt.imshow(speed2[N[0]//2, :, :], cmap='viridis')
+# plt.colorbar(label='Speed of Sound (m/s)')
+# plt.title('Speed of Sound Distribution')
+# plt.xlabel('x (grid points)')
+# plt.ylabel('y (grid points)')
+# plt.show()
 
-# sound_speed2 = FourierSeries(speed2, domain)
+# # sound_speed2 = FourierSeries(speed2, domain)
 
-# Test the gradient computation with current speed
-obj_value, gradient = value_and_grad(objective)(speed2)
+# # Test the gradient computation with current speed
+# obj_value, gradient = value_and_grad(objective)(speed2)
 
-print(f"Objective value: {obj_value}")
-print(f"Gradient shape: {gradient.shape}")
-print(f"Gradient max: {gradient.max()}")
-print(f"Gradient min: {gradient.min()}")
+# print(f"Objective value: {obj_value}")
+# print(f"Gradient shape: {gradient.shape}")
+# print(f"Gradient max: {gradient.max()}")
+# print(f"Gradient min: {gradient.min()}")
 
-# Compute gradient
+# # Compute gradient
 
-# Plot the gradient
-plt.figure(figsize=(10, 8))
-plt.imshow(gradient[N[0]//2, pml_size:-pml_size, pml_size:-pml_size].T, cmap='seismic')
-plt.colorbar(label='Gradient')
-plt.title('Gradient of objective with respect to sound speed')
-plt.xlabel('x')
-plt.ylabel('y')
-plt.show()
+# # Plot the gradient
+# plt.figure(figsize=(10, 8))
+# plt.imshow(gradient[N[0]//2, pml_size:-pml_size, pml_size:-pml_size].T, cmap='seismic')
+# plt.colorbar(label='Gradient')
+# plt.title('Gradient of objective with respect to sound speed')
+# plt.xlabel('x')
+# plt.ylabel('y')
+# plt.show()
 
 # %%
+

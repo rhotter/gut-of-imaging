@@ -56,7 +56,7 @@ def get_sensor_positions_spiral(n_sensors: int = N_SENSORS_DEFAULT) -> np.ndarra
     # unit hemisphere points
     positions = np.stack([x, y, z], axis=1)
     # scale to SCALP_RADIUS and translate to center at (BRAIN_RADIUS, BRAIN_RADIUS, 0)
-    positions = positions * SCALP_RADIUS + np.array([BRAIN_RADIUS, BRAIN_RADIUS, 0])
+    positions = positions * SCALP_RADIUS*1.1 + np.array([SCALP_RADIUS*1.1, SCALP_RADIUS*1.1, 0])
     return positions
 
 
@@ -64,15 +64,15 @@ def get_voxel_mask(resolution: float = 1) -> np.ndarray:
     # create a voxel mask for the brain
     # the mask is a 3D array of size (nx, ny, nz)
     # the mask is 1 for the brain, 2 for the skull, 3 for the scalp and 0 for the rest
-    nx = int(2 * BRAIN_RADIUS / resolution)
-    ny = int(2 * BRAIN_RADIUS / resolution)
-    nz = int(BRAIN_RADIUS / resolution)
+    nx = int(2 * SCALP_RADIUS*1.1 / resolution)
+    ny = int(2 * SCALP_RADIUS*1.1 / resolution)
+    nz = int(SCALP_RADIUS*1.1 / resolution)
     mask = np.zeros((nx, ny, nz))
 
     # Create coordinate grids
-    x = np.linspace(-BRAIN_RADIUS, BRAIN_RADIUS, nx)
-    y = np.linspace(-BRAIN_RADIUS, BRAIN_RADIUS, ny)
-    z = np.linspace(0, BRAIN_RADIUS, nz)
+    x = np.linspace(-SCALP_RADIUS*1.1, SCALP_RADIUS*1.1, nx)
+    y = np.linspace(-SCALP_RADIUS*1.1, SCALP_RADIUS*1.1, ny)
+    z = np.linspace(0, SCALP_RADIUS*1.1, nz)
     X, Y, Z = np.meshgrid(x, y, z, indexing="ij")
 
     # Calculate distances from origin for all points at once
