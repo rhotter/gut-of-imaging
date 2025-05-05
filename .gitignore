@@ -1,3 +1,6 @@
 .venv/
 jacobian_amplitude_arrival.npy
 __pycache__
+data/
+*.msh
+*.vtk
