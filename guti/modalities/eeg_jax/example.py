@@ -43,7 +43,7 @@ dipole_moment = np.array([0.0, 0.0, 1e-5]) # [A·cm]
 # %%
 # Specify mesh-related information. 
 ele_type = 'TET4'
-mesh_size = outer_radii[0] / 10  # [cm]
+mesh_size = outer_radii[0] / 11  # [cm]
 data_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data')
 os.makedirs(data_dir, exist_ok=True)
 meshio_mesh = get_sphere(outer_radii[0], mesh_size, data_dir, ele_type=ele_type)
@@ -62,7 +62,7 @@ def sphere_reference_boundary(point):
 
 # %%
 # get dipole loads using the Venant approach.
-aref = mesh_size / 10 # [cm]
+aref = mesh_size / 11 # [cm]
 neighbor_indices, load_values, load_node_positions = compute_venant_loads(
     mesh, dipole_center, dipole_moment, aref=aref)
 print(f"load_values with precision: {[f'{val:.2e}' for val in load_values]}")
@@ -255,7 +255,7 @@ save_sol(problem.fe, sol_list[0], vtk_path, point_infos=[('jac0', J[0,0])])
 
 # %%
 # Compute SVD of Jacobian
-U, s, Vh = np.linalg.svd(J.reshape(J.shape[0], -1))
+s = np.linalg.svdvals(J.reshape(J.shape[0], -1))
 
 # Plot the singular values.
 plt.figure(figsize=(8, 5))
