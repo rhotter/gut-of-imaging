@@ -40,7 +40,7 @@ def get_sensor_positions(n_sensors: int = N_SENSORS_DEFAULT) -> np.ndarray:
     return positions
 
 
-def get_sensor_positions_spiral(n_sensors: int = N_SENSORS_DEFAULT) -> np.ndarray:
+def get_sensor_positions_spiral(n_sensors: int = N_SENSORS_DEFAULT, offset: float = 0) -> np.ndarray:
     # Deterministic uniform sampling on a hemisphere using a spherical Fibonacci spiral
     golden_angle = np.pi * (3 - np.sqrt(5))
     indices = np.arange(n_sensors)
@@ -56,7 +56,7 @@ def get_sensor_positions_spiral(n_sensors: int = N_SENSORS_DEFAULT) -> np.ndarra
     # unit hemisphere points
     positions = np.stack([x, y, z], axis=1)
     # scale to SCALP_RADIUS and translate to center at (BRAIN_RADIUS, BRAIN_RADIUS, 0)
-    positions = positions * SCALP_RADIUS + np.array([BRAIN_RADIUS, BRAIN_RADIUS, 0])
+    positions = positions * (SCALP_RADIUS + offset) + np.array([SCALP_RADIUS, SCALP_RADIUS, 0])
     return positions
 
 
