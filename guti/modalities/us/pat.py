@@ -1,6 +1,6 @@
 #%%
-%load_ext autoreload
-%autoreload 2
+# %load_ext autoreload
+# %autoreload 2
 
 # %%
 # ---- JAX memory behaviour ---------------------------------------------
@@ -41,7 +41,7 @@ print(f"JAX is using CUDA: {is_cuda}")
 
 domain, medium_original, time_axis, brain_mask, skull_mask, scalp_mask = create_medium()
 
-sources, source_mask = create_sources(domain, time_axis, freq_Hz=0.1666e6)
+sources, source_mask = create_sources(domain, time_axis, freq_Hz=0.1666e6, inside=True)
 sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz=0.1666e6)
 
 find_arrival_time_vectorized = vmap(lambda signal2: find_arrival_time(signal2, sources))
@@ -95,25 +95,16 @@ def output_field(s, sources, sensors):
 
 #%%
 
+source_mask = source_mask[0,:,:,:]
 speed = medium_original.sound_speed.on_grid[...,0]
 
-contrast_sources_mask = jnp.full(speed.shape, False)
-
-# Set the contrast sources mask to be every nth voxel inside the brain mask
-n = 10  # Take every 10th voxel
-brain_indices = jnp.argwhere(brain_mask)
-selected_indices = brain_indices[::n]  # Take every nth index
-
-# Create the contrast sources mask
-contrast_sources_mask = contrast_sources_mask.at[tuple(selected_indices.T)].set(True)
-
 # Print the number of contrast source points
-num_contrast_points = jnp.sum(contrast_sources_mask)
+num_contrast_points = jnp.sum(source_mask)
 print(f"Number of contrast source points: {num_contrast_points}")
 
 
 def receiver_output(speed_contrast_sources):
-    speed_of_sound = speed.at[contrast_sources_mask].set(speed_contrast_sources)
+    speed_of_sound = speed.at[source_mask].set(speed_contrast_sources)
     pressure = output_field(speed_of_sound, sources, sensors)
 
     # arrival_times = find_arrival_time_vectorized(pressure[:,:,0].T)
@@ -125,7 +116,7 @@ def receiver_output(speed_contrast_sources):
     # return jnp.concatenate([peak_freq_amp.ravel(), arrival_times.ravel()])
     return pressure_downsampled
 
-speed_contrast_sources = speed[contrast_sources_mask]
+speed_contrast_sources = speed[source_mask]
 
 #%%
 
@@ -155,7 +146,8 @@ speed_contrast_sources = speed[contrast_sources_mask]
 # u, s, vh = jax.numpy.linalg.svd(jacobian_matrix, full_matrices=False)
 # s = s[:1000]  # Take top 1000 singular values
 
-jacobian = jax.jacrev(receiver_output)(speed_contrast_sources)
+jacobian = jax.jacrev(receiver_output)(speed_contrast_sources[:1])
+print(f"Computed Jacobian!!! shape: {jacobian.shape}")
 
 
 # %%
@@ -191,7 +183,7 @@ plt.show()
 
 from guti.data_utils import save_svd
 
-save_svd(s, 'us')
+save_svd(s, 'pat')
 
 #%%
 
