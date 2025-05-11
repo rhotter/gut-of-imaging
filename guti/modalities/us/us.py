@@ -121,9 +121,11 @@ n_inputs = len(selected_indices)
 print("Computing Jacobian")
 nt = time_axis.Nt
 
-n_sensors = sensors.shape[0]
+n_sensors = len(sensors.positions[0])
 
-combined_jacobian = np.zeros((n_sensors * nt, n_inputs))
+combined_jacobian = np.zeros((int(n_sensors * nt), int(n_inputs)))
+
+print(f"Jacobian shape: {combined_jacobian.shape}")
 
 n_outputs_filled = 0
 
