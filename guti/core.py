@@ -27,6 +27,16 @@ def get_source_positions(n_sources: int = N_SOURCES_DEFAULT) -> np.ndarray:
 
         if distance <= BRAIN_RADIUS:
             positions[count] = [x, y, z]
+
+            # # Vector from center of brain to the point
+            # center = np.array([BRAIN_RADIUS, BRAIN_RADIUS, 0])
+            # direction = np.array([x, y, z]) - center
+            
+            # # Normalize the direction vector and scale to brain radius
+            # normalized_direction = direction / distance
+            
+            # # Place the point on the brain surface
+            # positions[count] = center + normalized_direction * BRAIN_RADIUS
             count += 1
     return positions
 

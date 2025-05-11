@@ -4,3 +4,8 @@ __pycache__
 data/
 *.msh
 *.vtk
+leadfields/
+tmp/
+*.pyc
+results/archive/
+guti/modalities/meg/combined_jacobian.npy

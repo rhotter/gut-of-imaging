@@ -107,11 +107,11 @@ def compute_svd(n_sensors=4000, n_sources=4000, offset=opm_distance):
 %matplotlib inline
 from matplotlib import pyplot as plt
 
-n_sensors = 200
-n_sources = 2000
+# A_1, s_1 = compute_svd(n_sensors=200, n_sources=1000, offset=opm_distance)
+# A_2, s_2 = compute_svd(n_sensors=200, n_sources=1000, offset=squid_distance)
 
-A_1, s_1 = compute_svd(n_sensors=n_sensors, n_sources=n_sources, offset=opm_distance)
-A_2, s_2 = compute_svd(n_sensors=n_sensors, n_sources=n_sources, offset=squid_distance)
+A_1, s_1 = compute_svd(n_sensors=1000, n_sources=1000, offset=opm_distance)
+A_2, s_2 = compute_svd(n_sensors=1000, n_sources=1000, offset=squid_distance)
 
 # Plot the singular value spectra on a log scale
 plt.figure(figsize=(8, 4))

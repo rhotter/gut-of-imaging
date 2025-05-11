@@ -39,6 +39,8 @@ platforms = jax.devices()
 is_cuda = any('cuda' in str(device).lower() for device in platforms)
 print(f"JAX is using CUDA: {is_cuda}")
 
+print("Creating medium")
+
 domain, medium_original, time_axis, brain_mask, skull_mask, scalp_mask = create_medium()
 
 sources, source_mask = create_sources(domain, time_axis, freq_Hz=0.1666e6)
@@ -46,8 +48,7 @@ sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_
 
 find_arrival_time_vectorized = vmap(lambda signal2: find_arrival_time(signal2, sources))
 
-# settings = TimeWavePropagationSettings(checkpoint=True)
-
+print("Creating solver functions")
 # Compile and create the solver functions
 @jit
 def solver_all(medium, sources):
@@ -80,8 +81,9 @@ pml_size = medium_original.pml_size
 
 #%%
 
-settings = TimeWavePropagationSettings(checkpoint=True)
+# Function mapping speed of sound field, sources, and sensors to pressure field
 
+settings = TimeWavePropagationSettings(checkpoint=True)
 # Jax function to map a speed of sound map to the corresponding pressure field
 def output_field(s, sources, sensors):
     sound_speed2 = FourierSeries(s, domain)
@@ -94,6 +96,8 @@ def output_field(s, sources, sensors):
     return pressure
 
 #%%
+
+# Subsampling the voxels in the speed of sound field to create the contrast sources (the inputs to the imaging forward model)
 
 speed = medium_original.sound_speed.on_grid[...,0]
 
@@ -111,72 +115,49 @@ contrast_sources_mask = contrast_sources_mask.at[tuple(selected_indices.T)].set(
 num_contrast_points = jnp.sum(contrast_sources_mask)
 print(f"Number of contrast source points: {num_contrast_points}")
 
+n_inputs = len(selected_indices)
 
-def receiver_output(speed_contrast_sources):
-    speed_of_sound = speed.at[contrast_sources_mask].set(speed_contrast_sources)
-    pressure = output_field(speed_of_sound, sources, sensors)
-
-    # arrival_times = find_arrival_time_vectorized(pressure[:,:,0].T)
-    # peak_freq_amp = jnp.max(jnp.abs(pressure), axis=0)
-
-    pressure_downsampled = pressure[::50,:,0].flatten()
-    
-    # Combine metrics into single differentiable output
-    # return jnp.concatenate([peak_freq_amp.ravel(), arrival_times.ravel()])
-    return pressure_downsampled
-
-speed_contrast_sources = speed[contrast_sources_mask]
 
 #%%
 
-# print("Computing Jacobian")
+print("Computing Jacobian")
+nt = time_axis.Nt
 
-# from scipy.sparse.linalg import LinearOperator, svds
+n_sensors = len(sensors.positions[0])
 
-# # Forward  product  J @ v
-# def J_mv(v):
-#     return jax.jvp(receiver_output,
-#                    (speed_contrast_sources,),
-#                    (v,))[1]
+combined_jacobian = np.zeros((int(n_sensors * nt), int(n_inputs)))
 
-# # Adjoint product Jᵀ @ u
-# def JT_mv(u):
-#     return jax.vjp(receiver_output,
-#                    speed_contrast_sources)[1](u)[0]
+print(f"Jacobian shape: {combined_jacobian.shape}")
 
-# out_size = receiver_output(speed_contrast_sources).size
-# in_size  = speed_contrast_sources.size
+n_outputs_filled = 0
 
-# # Compute Jacobian directly with JAX for GPU
-# jacobian_fn = jax.jacrev(receiver_output)
-# jacobian_matrix = jacobian_fn(speed_contrast_sources)
+for i in range(20):
 
-# # Compute SVD directly on GPU using JAX
-# u, s, vh = jax.numpy.linalg.svd(jacobian_matrix, full_matrices=False)
-# s = s[:1000]  # Take top 1000 singular values
+  print(f"Computing Jacobian for time shift {i}")
 
-jacobian = jax.jacrev(receiver_output)(speed_contrast_sources)
+  def receiver_output(speed_contrast_sources):
+      speed_of_sound = speed.at[contrast_sources_mask].set(speed_contrast_sources)
+      pressure = output_field(speed_of_sound, sources, sensors)
+
+      pressure_downsampled = pressure[i::20,:,0].flatten()
+      
+      return pressure_downsampled
+
+  speed_contrast_sources = speed[contrast_sources_mask]
+
+
+  jacobian = jax.jacrev(receiver_output)(speed_contrast_sources)
+
+  combined_jacobian[n_outputs_filled:n_outputs_filled+jacobian.shape[0], :] = jacobian
+
+  n_outputs_filled += jacobian.shape[0]
+
 
 
 # %%
 
-# # Compute the singular value spectrum.
-
-
-# # Save the Jacobian matrix to a file
-# np.save('jacobian_amplitude_arrival.npy', np.array(jacobian))
-u, s, vh = np.linalg.svd(np.array(jacobian))
-
-# u, s, vh = jax.numpy.linalg.svd(jacobian, full_matrices=False)
-
-# u, s, vh = scipy.sparse.linalg.svds(jacobian, k=1000)
-
-
-# svd
-# Use numpy's SVD instead of JAX's to avoid GPU solver errors
-# This is more stable for large matrices but will run on CPU
-# Convert back to JAX arrays if needed for downstream operations
-# u, s, vh = jnp.array(u), jnp.array(s), jnp.array(vh)
+# Compute the singular value spectrum.
+u, s, vh = np.linalg.svd(np.array(combined_jacobian))
 
 # Plot singular value spectrum
 plt.figure(figsize=(10, 6))
@@ -189,9 +170,13 @@ plt.show()
 
 #%%
 
+# Save results
+
 from guti.data_utils import save_svd
 
 save_svd(s, 'us')
+
+np.save('combined_jacobian.npy', combined_jacobian)
 
 #%%
 
