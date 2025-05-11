@@ -53,11 +53,11 @@ def create_medium():
 
     return domain, medium, time_axis, brain_mask, skull_mask, scalp_mask
 
-def create_sources_receivers(domain, time_axis, freq_Hz=0.25e6):
+def create_sources_receivers(domain, time_axis, freq_Hz=0.25e6, n_sensors=200):
     # Create a 128x128 square of sources centered in x and at y=25
     N = domain.N
     dx = domain.dx
-    sensor_positions = get_sensor_positions_spiral(n_sensors=400, offset=8)
+    sensor_positions = get_sensor_positions_spiral(n_sensors=n_sensors, offset=8)
     print(f"Sensor positions mins: {sensor_positions.min(axis=0)}")
     print(f"Sensor positions maxs: {sensor_positions.max(axis=0)}")
     sensor_positions_voxels = jnp.floor(sensor_positions / (jnp.array(dx)*1e3)).astype(jnp.int32)
