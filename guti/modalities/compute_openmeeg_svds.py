@@ -29,13 +29,6 @@ G_eit = load_mat73('openmeeg_sample_data/leadfields/eit_leadfield.mat')['linop']
 G_ip = load_mat73('openmeeg_sample_data/leadfields/ip_leadfield.mat')['linop']
 G_ecog = load_mat73('openmeeg_sample_data/leadfields/ecog_leadfield.mat')['linop']
 
-# # print shape (source-detector pairs, voxels)
-# print(G_meg['G'].shape)
-# print(G_eeg['G'].shape)
-# print(G_eit['G'].shape)
-# print(G_ip['G'].shape)
-# print(G_ecog['G'].shape)
-
 #%%
 # Compute SVDs
 s_meg = np.linalg.svdvals(G_meg)
@@ -75,13 +68,5 @@ save_svd(s_eeg, 'eeg_openmeeg')
 save_svd(s_eit, 'eit_openmeeg')
 save_svd(s_ip, 'ip_openmeeg')
 save_svd(s_ecog, 'ecog_openmeeg')
-
-
-
-
-
-
-
-
 
 # %%
