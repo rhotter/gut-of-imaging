@@ -52,7 +52,7 @@ def get_sensor_positions(n_sensors: int = N_SENSORS_DEFAULT) -> np.ndarray:
     return positions
 
 
-def get_sensor_positions_spiral(n_sensors: int = N_SENSORS_DEFAULT, offset: float = 0) -> np.ndarray:
+def get_sensor_positions_spiral(n_sensors: int = N_SENSORS_DEFAULT, offset: float = 0, start_n: int = 0, end_n: int | None = None) -> np.ndarray:
     # Deterministic uniform sampling on a hemisphere using a spherical Fibonacci spiral
     golden_angle = np.pi * (3 - np.sqrt(5))
     indices = np.arange(n_sensors)
@@ -69,7 +69,7 @@ def get_sensor_positions_spiral(n_sensors: int = N_SENSORS_DEFAULT, offset: floa
     positions = np.stack([x, y, z], axis=1)
     # scale to SCALP_RADIUS and translate to center at (BRAIN_RADIUS, BRAIN_RADIUS, 0)
     positions = positions * (SCALP_RADIUS + offset) + np.array([SCALP_RADIUS, SCALP_RADIUS, 0])
-    return positions
+    return positions[start_n:end_n]
 
 
 def get_voxel_mask(resolution: float = 1, offset: float = 0) -> np.ndarray:
