@@ -8,4 +8,4 @@ leadfields/
 tmp/
 *.pyc
 results/archive/
-
+guti/modalities/meg/combined_jacobian.npy
