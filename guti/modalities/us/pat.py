@@ -146,7 +146,7 @@ speed_contrast_sources = speed[source_mask]
 # u, s, vh = jax.numpy.linalg.svd(jacobian_matrix, full_matrices=False)
 # s = s[:1000]  # Take top 1000 singular values
 
-jacobian = jax.jacrev(receiver_output)(speed_contrast_sources[:1])
+jacobian = jax.jacrev(receiver_output)(speed_contrast_sources)
 print(f"Computed Jacobian!!! shape: {jacobian.shape}")
 
 
