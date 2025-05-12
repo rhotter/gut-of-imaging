@@ -93,11 +93,11 @@ def create_sources(domain, time_axis, freq_Hz=0.25e6, inside: bool = False):
     return sources, source_mask
 
 
-def create_receivers(domain, time_axis, freq_Hz=0.25e6):
+def create_receivers(domain, time_axis, freq_Hz=0.25e6, num_receivers: int = 200, start_n: int = 0, end_n: int | None = None):
     N = domain.N
     dx = domain.dx
     # Get spiral sensor positions in world coordinates
-    sensor_positions = get_sensor_positions_spiral(n_sensors=600, offset=8)
+    sensor_positions = get_sensor_positions_spiral(n_sensors=num_receivers, offset=8, start_n=start_n, end_n=end_n)
     # Convert to voxel indices
     sensor_positions_voxels = jnp.floor(sensor_positions / (jnp.array(dx) * 1e3)).astype(jnp.int32)
     x_real, y_real, z_real = sensor_positions[:, 0], sensor_positions[:, 1], sensor_positions[:, 2]

@@ -1,4 +1,6 @@
+import os
 import numpy as np
+from pathlib import Path
 
 
 np.random.seed(239)
@@ -50,7 +52,7 @@ def get_sensor_positions(n_sensors: int = N_SENSORS_DEFAULT) -> np.ndarray:
     return positions
 
 
-def get_sensor_positions_spiral(n_sensors: int = N_SENSORS_DEFAULT, offset: float = 0) -> np.ndarray:
+def get_sensor_positions_spiral(n_sensors: int = N_SENSORS_DEFAULT, offset: float = 0, start_n: int = 0, end_n: int | None = None) -> np.ndarray:
     # Deterministic uniform sampling on a hemisphere using a spherical Fibonacci spiral
     golden_angle = np.pi * (3 - np.sqrt(5))
     indices = np.arange(n_sensors)
@@ -67,7 +69,7 @@ def get_sensor_positions_spiral(n_sensors: int = N_SENSORS_DEFAULT, offset: floa
     positions = np.stack([x, y, z], axis=1)
     # scale to SCALP_RADIUS and translate to center at (BRAIN_RADIUS, BRAIN_RADIUS, 0)
     positions = positions * (SCALP_RADIUS + offset) + np.array([SCALP_RADIUS, SCALP_RADIUS, 0])
-    return positions
+    return positions[start_n:end_n]
 
 
 def get_voxel_mask(resolution: float = 1, offset: float = 0) -> np.ndarray:
@@ -120,3 +122,128 @@ def get_source_positions_halton(n_sources: int = N_SOURCES_DEFAULT) -> np.ndarra
         z = r * np.cos(theta)
         positions[i] = [x, y, z]
     return positions
+
+
+def create_hemisphere(radius, n_phi=8, n_theta=8):
+    """Create a hemisphere mesh.
+    
+    Parameters
+    ----------
+    radius : float
+        Radius of the hemisphere
+    n_phi : int
+        Number of points in the azimuthal direction
+    n_theta : int
+        Number of points in the polar direction (hemisphere: 0 to π/2)
+    
+    Returns
+    -------
+    vertices : ndarray
+        Vertex coordinates
+    triangles : ndarray
+        Triangle indices (0-based)
+    """
+    # Generate grid of points in spherical coordinates
+    # For a hemisphere, theta goes from 0 to π/2
+    theta = np.linspace(0, np.pi/2, n_theta)
+    phi = np.linspace(0, 2*np.pi, n_phi)
+    
+    # Create vertices
+    vertices = []
+    
+    # Add the pole point at the top of the hemisphere
+    vertices.append([0, 0, radius])
+    
+    # Add vertices for the rest of the hemisphere
+    for t in theta[1:]:  # Skip the first theta (pole point already added)
+        for p in phi[:-1]:  # Skip the last phi (duplicate of phi=0)
+            x = radius * np.sin(t) * np.cos(p)
+            y = radius * np.sin(t) * np.sin(p)
+            z = radius * np.cos(t)
+            vertices.append([x, y, z])
+    
+    vertices = np.array(vertices)
+    
+    # Create triangles
+    triangles = []
+    
+    # Number of unique phi points
+    n_phi_actual = n_phi - 1
+    
+    # Create triangles connecting the pole to the first ring
+    for i in range(n_phi_actual):
+        v1 = 0  # Pole vertex
+        v2 = i + 1
+        v3 = (i + 1) % n_phi_actual + 1
+        triangles.append([v1, v2, v3])
+    
+    # Create triangles for the rest of the hemisphere
+    for i in range(n_theta - 2):  # -2 because we've handled the top row separately
+        row_start = 1 + i * n_phi_actual
+        next_row_start = 1 + (i + 1) * n_phi_actual
+        
+        for j in range(n_phi_actual):
+            v1 = row_start + j
+            v2 = row_start + (j + 1) % n_phi_actual
+            v3 = next_row_start + j
+            v4 = next_row_start + (j + 1) % n_phi_actual
+            
+            # Add two triangles for each quad
+            triangles.append([v1, v2, v3])
+            triangles.append([v2, v4, v3])
+    
+    triangles = np.array(triangles)
+    
+    return vertices, triangles
+
+def write_tri(filename, vertices, triangles):
+    """Write a .tri file following the BrainVisa format.
+    
+    Parameters
+    ----------
+    filename : str
+        Path to the output file
+    vertices : array
+        Vertex coordinates (N, 3)
+    triangles : array
+        Triangle indices (M, 3), must use 0-based indexing
+    """
+    with open(filename, 'w') as f:
+        # Write number of vertices
+        f.write(f"- {len(vertices)}\n")
+        
+        # Write vertices with normals (normals = normalized vertex positions for a sphere)
+        for v in vertices:
+            # Calculate normal (just normalize the position vector for a sphere)
+            n = v / np.linalg.norm(v)
+            f.write(f"{v[0]:.8f} {v[1]:.8f} {v[2]:.8f} {n[0]:.8f} {n[1]:.8f} {n[2]:.8f}\n")
+        
+        # Write number of triangles (repeated three times as per format)
+        f.write(f"- {len(triangles)} {len(triangles)} {len(triangles)}\n")
+        
+        # Write triangles with 0-based indexing
+        for t in triangles:
+            f.write(f"{t[0]} {t[1]} {t[2]}\n")
+
+def create_bem_model():
+    """Create a 3-layer hemispherical model."""
+    # Ensure model directory exists
+    os.makedirs('data/model', exist_ok=True)
+    
+    # Create the three hemispherical meshes
+    for name, radius in [('brain', BRAIN_RADIUS), ('skull', SKULL_RADIUS), ('scalp', SCALP_RADIUS)]:
+        vertices, triangles = create_hemisphere(radius, n_phi=16, n_theta=8)
+        write_tri(f"data/model/{name}_hemi.tri", vertices, triangles)
+    
+    # Create the geometry file
+    with open('data/model/hemi_head.geom', 'w') as f:
+        f.write("# Domain Description 1.0\n\n")
+        f.write("Interfaces 3\n\n")
+        f.write("Interface Brain: \"brain_hemi.tri\"\n")
+        f.write("Interface Skull: \"skull_hemi.tri\"\n")
+        f.write("Interface Scalp: \"scalp_hemi.tri\"\n\n")
+        f.write("Domains 4\n\n")
+        f.write("Domain Brain: -Brain\n")
+        f.write("Domain Skull: -Skull +Brain\n")
+        f.write("Domain Scalp: -Scalp +Skull\n")
+        f.write("Domain Air: +Scalp\n")
