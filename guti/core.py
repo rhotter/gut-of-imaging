@@ -48,13 +48,13 @@ def get_source_positions(n_sources: int = N_SOURCES_DEFAULT) -> np.ndarray:
     return positions
 
 
-def get_sensor_positions(n_sensors: int = N_SENSORS_DEFAULT) -> np.ndarray:
+def get_sensor_positions(n_sensors: int = N_SENSORS_DEFAULT, offset: float = 0, start_n: int = 0, end_n: int | None = None) -> np.ndarray:
     # sample random positions on a hemisphere
     positions = np.random.randn(n_sensors, 3)
     positions[:, 2] = np.abs(positions[:, 2])
     positions = positions / np.linalg.norm(positions, axis=1, keepdims=True)
-    positions = positions * SCALP_RADIUS + np.array([BRAIN_RADIUS, BRAIN_RADIUS, 0])
-    return positions
+    positions = positions * (SCALP_RADIUS + offset) + np.array([SCALP_RADIUS, SCALP_RADIUS, 0])
+    return positions[start_n:end_n]
 
 
 def get_sensor_positions_spiral(n_sensors: int = N_SENSORS_DEFAULT, offset: float = 0, start_n: int = 0, end_n: int | None = None) -> np.ndarray:

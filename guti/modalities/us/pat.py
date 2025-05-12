@@ -1,6 +1,6 @@
 #%%
-# %load_ext autoreload
-# %autoreload 2
+%load_ext autoreload
+%autoreload 2
 
 # %%
 # ---- JAX memory behaviour ---------------------------------------------
@@ -103,16 +103,17 @@ print(f"Number of contrast source points: {num_contrast_points}")
 
 
 def receiver_output_for_sensors(sensors_):
-  def receiver_output(speed_contrast_sources):
-      speed_of_sound = speed.at[source_mask].set(speed_contrast_sources)
-      pressure = output_field(speed_of_sound, sources, sensors_)
+    def receiver_output(speed_contrast_sources):
+        speed_of_sound = speed.at[source_mask].set(speed_contrast_sources)
+        pressure = output_field(speed_of_sound, sources, sensors_)
 
 
-      pressure_downsampled = pressure[::50,:,0].flatten()
-      
-      # Combine metrics into single differentiable output
-      # return jnp.concatenate([peak_freq_amp.ravel(), arrival_times.ravel()])
-      return pressure_downsampled
+        pressure_downsampled = pressure[::50,:,0].flatten()
+        
+        # Combine metrics into single differentiable output
+        # return jnp.concatenate([peak_freq_amp.ravel(), arrival_times.ravel()])
+        return pressure_downsampled
+    return receiver_output
 
 speed_contrast_sources = speed[source_mask]
 
@@ -144,17 +145,26 @@ speed_contrast_sources = speed[source_mask]
 # u, s, vh = jax.numpy.linalg.svd(jacobian_matrix, full_matrices=False)
 # s = s[:1000]  # Take top 1000 singular values
 
-n_sensors = sensors_all.positions.shape[0]
-step = n_sensors // 10
+n_sensors_per_batch = 200
+n_batches = 10
 results = []
-for i in range(10):
-   jacobian = jax.jacrev(receiver_output_for_sensors(sensors_all[i*step:(i+1)*step]))(speed_contrast_sources)
-   results.append(jacobian)
-   print(f"Computed Jacobian!!! shape: {jacobian.shape}")
+for i in range(n_batches):
+  
+    sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz=0.1666e6, num_receivers=n_sensors_per_batch * n_batches, start_n=i*n_sensors_per_batch, end_n=(i+1)*n_sensors_per_batch)
+    print(f"{len(sensors.positions)} sensors in batch {i}")
+    jacobian = jax.jacrev(receiver_output_for_sensors(sensors))(speed_contrast_sources)
+    results.append(jacobian)
+    print(f"Computed Jacobian!!! shape: {jacobian.shape}")
 
 jacobian = jnp.concatenate(results, axis=0)
 print(f"Total Jacobian shape: {jacobian.shape}")
 
+# %%
+i=40
+n_sensors_per_batch = 200
+n_batches = 10
+sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz=0.1666e6, num_receivers=400, start_n=0, end_n=200)
+print(sensors.positions)
 
 # %%
 
