@@ -150,7 +150,7 @@ n_batches = 10
 results = []
 for i in range(n_batches):
   
-    sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz=0.1666e6, num_receivers=n_sensors_per_batch * n_batches, start_n=i*n_sensors_per_batch, end_n=(i+1)*n_sensors_per_batch)
+    sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz=0.1666e6, num_receivers=n_sensors_per_batch, spiral=False)
     print(f"{len(sensors.positions)} sensors in batch {i}")
     jacobian = jax.jacrev(receiver_output_for_sensors(sensors))(speed_contrast_sources)
     results.append(jacobian)
