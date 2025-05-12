@@ -1,6 +1,24 @@
 """
-Compute SVDs of the leadfields of the OpenMEEG sample data.
+Compute SVDs of leadfields using OpenMEEG.
 """
+
+#%%
+import sys
+sys.path.append('..')
+
+import os.path as op
+import openmeeg as om
+import numpy as np
+import h5py
+import matplotlib.pyplot as plt
+
+print(__doc__)
+
+# %%
+from core import create_bem_model
+
+create_bem_model()
+
 # %% 
 # Import modules
 import numpy as np
@@ -37,12 +55,12 @@ s_eit = np.linalg.svdvals(G_eit)
 s_ip = np.linalg.svdvals(G_ip)
 s_ecog = np.linalg.svdvals(G_ecog)
 
-# # normalize by the first singular value
-# s_meg = s_meg / s_meg[0]
-# s_eeg = s_eeg / s_eeg[0]
-# s_eit = s_eit / s_eit[0]
-# s_ip = s_ip / s_ip[0]
-# s_ecog = s_ecog / s_ecog[0]
+# normalize by the first singular value
+s_meg = s_meg / s_meg[0]
+s_eeg = s_eeg / s_eeg[0]
+s_eit = s_eit / s_eit[0]
+s_ip = s_ip / s_ip[0]
+s_ecog = s_ecog / s_ecog[0]
 
 #%%
 # Plot SVDs
