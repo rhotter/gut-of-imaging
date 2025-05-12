@@ -1,6 +1,6 @@
 #%%
-# %load_ext autoreload
-# %autoreload 2
+%load_ext autoreload
+%autoreload 2
 
 # %%
 # ---- JAX memory behaviour ---------------------------------------------
@@ -145,12 +145,13 @@ speed_contrast_sources = speed[source_mask]
 # u, s, vh = jax.numpy.linalg.svd(jacobian_matrix, full_matrices=False)
 # s = s[:1000]  # Take top 1000 singular values
 
-n_sensors_per_batch = sensors_all.positions.shape[0]
+n_sensors_per_batch = 200
 n_batches = 10
 results = []
 for i in range(n_batches):
   
     sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz=0.1666e6, num_receivers=n_sensors_per_batch * n_batches, start_n=i*n_sensors_per_batch, end_n=(i+1)*n_sensors_per_batch)
+    print(f"{len(sensors.positions)} sensors in batch {i}")
     jacobian = jax.jacrev(receiver_output_for_sensors(sensors))(speed_contrast_sources)
     results.append(jacobian)
     print(f"Computed Jacobian!!! shape: {jacobian.shape}")
@@ -158,6 +159,12 @@ for i in range(n_batches):
 jacobian = jnp.concatenate(results, axis=0)
 print(f"Total Jacobian shape: {jacobian.shape}")
 
+# %%
+i=40
+n_sensors_per_batch = 200
+n_batches = 10
+sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz=0.1666e6, num_receivers=400, start_n=0, end_n=200)
+print(sensors.positions)
 
 # %%
 
