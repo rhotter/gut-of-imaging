@@ -9,6 +9,11 @@ BRAIN_RADIUS = 80  # mm
 SKULL_RADIUS = 86
 SCALP_RADIUS = 92
 
+AIR_CONDUCTIVITY = 0
+SCALP_CONDUCTIVITY = 1
+BRAIN_CONDUCTIVITY = 1
+SKULL_CONDUCTIVITY = 0.03
+
 N_SOURCES_DEFAULT = 100
 N_SENSORS_DEFAULT = 100
 
@@ -225,18 +230,38 @@ def write_tri(filename, vertices, triangles):
         for t in triangles:
             f.write(f"{t[0]} {t[1]} {t[2]}\n")
 
+def get_random_orientations(n_sources: int) -> np.ndarray:
+    """Generate random unit vectors for dipole orientations.
+    
+    Parameters
+    ----------
+    n_sources : int
+        Number of dipole orientations to generate
+        
+    Returns
+    -------
+    orientations : ndarray of shape (n_sources, 3)
+        Random unit vectors representing dipole orientations
+    """
+    # Generate random vectors
+    orientations = np.random.randn(n_sources, 3)
+    # Normalize to unit vectors
+    norms = np.linalg.norm(orientations, axis=1, keepdims=True)
+    orientations = orientations / norms
+    return orientations
+
 def create_bem_model():
     """Create a 3-layer hemispherical model."""
     # Ensure model directory exists
-    os.makedirs('data/model', exist_ok=True)
+    os.makedirs('bem_model/', exist_ok=True)
     
     # Create the three hemispherical meshes
     for name, radius in [('brain', BRAIN_RADIUS), ('skull', SKULL_RADIUS), ('scalp', SCALP_RADIUS)]:
         vertices, triangles = create_hemisphere(radius, n_phi=16, n_theta=8)
-        write_tri(f"data/model/{name}_hemi.tri", vertices, triangles)
+        write_tri(f"bem_model/{name}_hemi.tri", vertices, triangles)
     
     # Create the geometry file
-    with open('data/model/hemi_head.geom', 'w') as f:
+    with open('bem_model/hemi_head.geom', 'w') as f:
         f.write("# Domain Description 1.0\n\n")
         f.write("Interfaces 3\n\n")
         f.write("Interface Brain: \"brain_hemi.tri\"\n")
@@ -247,3 +272,20 @@ def create_bem_model():
         f.write("Domain Skull: -Skull +Brain\n")
         f.write("Domain Scalp: -Scalp +Skull\n")
         f.write("Domain Air: +Scalp\n")
+    
+    # Create the conductivity file
+    with open('bem_model/hemi_head.cond', 'w') as f:
+        f.write("# Properties Description 1.0 (Conductivities)\n\n")
+        f.write(f"Air         {AIR_CONDUCTIVITY}\n")
+        f.write(f"Scalp       {SCALP_CONDUCTIVITY}\n")
+        f.write(f"Brain       {BRAIN_CONDUCTIVITY}\n")
+        f.write(f"Skull       {SKULL_CONDUCTIVITY}\n")
+    
+    # Generate dipole positions and orientations
+    positions = get_source_positions_halton(N_SOURCES_DEFAULT)
+    orientations = get_random_orientations(N_SOURCES_DEFAULT)
+    
+    # Write dipoles to file
+    with open('bem_model/cortex_dipoles.txt', 'w') as f:
+        for pos, ori in zip(positions, orientations):
+            f.write(f"{pos[0]:.6f}\t{pos[1]:.6f}\t{pos[2]:.6f}\t{ori[0]:.6f}\t{ori[1]:.6f}\t{ori[2]:.6f}\n")
