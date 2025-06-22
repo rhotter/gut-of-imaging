@@ -1,3 +1,11 @@
 # Grand unified theory of imaging
 
 ![Singular value spectrum](./spectrum.png)
+
+## Running the code
+
+```
+uv venv
+source .venv/bin/activate
+uv pip install -e .
+```
