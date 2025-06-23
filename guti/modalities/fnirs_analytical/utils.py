@@ -1,82 +1,78 @@
 import numpy as np
+import torch
+from typing import Tuple
 
 
-def compute_perpendicular_distance(pos, source_pos, detector_pos):
+def compute_perpendicular_distance(pos: torch.Tensor, source_pos: torch.Tensor, detector_pos: torch.Tensor) -> torch.Tensor:
     """
-    Compute the perpendicular distance from points to the source-detector line.
-    
-    This represents the z-coordinate as if the source were at the origin 
-    and the detector were at (d_source_detector, 0, 0).
+    Compute the perpendicular distance from points to the source-detector line using PyTorch.
     
     Parameters
     ----------
-    pos : numpy.ndarray
+    pos : torch.Tensor
         The positions to calculate perpendicular distance for. Shape (n_points, 3).
-    source_pos : numpy.ndarray
-        The position of the source in mm.
-    detector_pos : numpy.ndarray
-        The position of the detector in mm.
+    source_pos : torch.Tensor
+        The source positions. Shape (n_pairs, 3).
+    detector_pos : torch.Tensor
+        The detector positions. Shape (n_pairs, 3).
         
     Returns
     -------
-    z : numpy.ndarray
-        Perpendicular distances from each point to the source-detector line.
+    z : torch.Tensor
+        Perpendicular distances. Shape (n_pairs, n_points).
     """
-    # Distance from source to detector
-    d_source_detector = np.linalg.norm(detector_pos - source_pos)
+    # Distance from source to detector for each pair
+    d_source_detector = torch.norm(detector_pos - source_pos, dim=1)  # (n_pairs,)
     
     # Transform coordinates: translate so source is at origin
-    pos_rel = pos - source_pos
+    # pos: (n_points, 3), source_pos: (n_pairs, 3) -> pos_rel: (n_pairs, n_points, 3)
+    pos_rel = pos[None, :, :] - source_pos[:, None, :]
     
-    # Unit vector from source to detector
-    dir_source_detector = (detector_pos - source_pos) / d_source_detector
+    # Unit vector from source to detector for each pair
+    dir_source_detector = (detector_pos - source_pos) / d_source_detector[:, None]  # (n_pairs, 3)
     
     # Project each relative position onto the source-detector line
-    d_proj = np.dot(pos_rel, dir_source_detector)
+    # pos_rel: (n_pairs, n_points, 3), dir_source_detector: (n_pairs, 3) -> d_proj: (n_pairs, n_points)
+    d_proj = torch.sum(pos_rel * dir_source_detector[:, None, :], dim=2)
     
     # Vector from each point to its projection on the line
-    vec_perp = pos_rel - d_proj[:, np.newaxis] * dir_source_detector
+    vec_perp = pos_rel - d_proj[:, :, None] * dir_source_detector[:, None, :]
     
     # z is the magnitude of the perpendicular vector
-    z = np.linalg.norm(vec_perp, axis=1)
+    z = torch.norm(vec_perp, dim=2)  # (n_pairs, n_points)
     
     return z
 
 
-def cw_sensitivity(pos, source_pos, detector_pos, mu_eff):
+def cw_sensitivity(pos: torch.Tensor, source_pos: torch.Tensor, detector_pos: torch.Tensor, mu_eff: float) -> torch.Tensor:
     """
-    Calculate the continuous wave sensitivity function for given positions and source-detector distance.
-    The sensitivity function is with respect to mu_a at pos_mm.
+    Calculate the continuous wave sensitivity function using PyTorch on GPU.
+    The sensitivity function is with respect to mu_a at pos.
     
     From eq (14.8) in the textbook Quantitative Biomedical Optics by Bigio and Fantini (p. 427).
 
     Parameters
     ----------
-    pos : numpy.ndarray
-        The positions to calculate sensitivity for. Shape can be either (3,) for a single point
-        or (n_points, 3) for multiple points.
-    source_pos : numpy.ndarray
-        The position of the source in mm.
-    detector_pos : numpy.ndarray
-        The position of the detector in mm.
+    pos : torch.Tensor
+        The positions to calculate sensitivity for. Shape (n_points, 3).
+    source_pos : torch.Tensor
+        The source positions. Shape (n_pairs, 3).
+    detector_pos : torch.Tensor
+        The detector positions. Shape (n_pairs, 3).
     mu_eff : float
         The effective attenuation coefficient in mm^-1.
 
     Returns
     -------
-    sensitivity : numpy.ndarray
-        The sensitivity function. Shape is (n_points,) if pos has shape (n_points, 3),
-        or a scalar if pos has shape (3,).
+    sensitivity : torch.Tensor
+        The sensitivity function. Shape (n_pairs, n_points).
     """
-    # Handle both single point and multiple points
-    if pos.ndim == 1:
-        pos = pos.reshape(1, -1)
-
     # Calculate distances
-    d_source_pos = np.linalg.norm(source_pos - pos, axis=1)
-    d_detector_pos = np.linalg.norm(detector_pos - pos, axis=1)
+    # pos: (n_points, 3), source_pos: (n_pairs, 3) -> d_source_pos: (n_pairs, n_points)
+    d_source_pos = torch.norm(source_pos[:, None, :] - pos[None, :, :], dim=2)
+    d_detector_pos = torch.norm(detector_pos[:, None, :] - pos[None, :, :], dim=2)
 
-    # compute z as if the source were at the origin and the detector were at (d_detector_pos, 0, 0)
+    # Compute perpendicular distance z
     z = compute_perpendicular_distance(pos, source_pos, detector_pos)
     
     # Calculate sensitivity
@@ -84,9 +80,45 @@ def cw_sensitivity(pos, source_pos, detector_pos, mu_eff):
         z ** 2
         * (mu_eff + 1 / d_source_pos)
         * (mu_eff + 1 / d_detector_pos)
-        * np.exp(-mu_eff * (d_source_pos + d_detector_pos))  # TODO: check if this is correct
+        * torch.exp(-mu_eff * (d_source_pos + d_detector_pos))
         / (d_source_pos**2 * d_detector_pos**2)
     )
 
-    # Return scalar if input was a single point
-    return sensitivity[0] if pos.shape[0] == 1 else sensitivity
+    return sensitivity
+
+
+def get_valid_source_detector_pairs(sensor_positions_mm: torch.Tensor, max_dist: float) -> Tuple[torch.Tensor, torch.Tensor]:
+    """
+    Get all valid source-detector pairs that satisfy distance criteria using PyTorch.
+    
+    Parameters
+    ----------
+    sensor_positions_mm : torch.Tensor
+        Sensor positions with shape (n_sensors, 3).
+    max_dist : float
+        Maximum allowed distance between source and detector.
+        
+    Returns
+    -------
+    sources : torch.Tensor
+        Source positions for valid pairs. Shape (n_pairs, 3).
+    detectors : torch.Tensor
+        Detector positions for valid pairs. Shape (n_pairs, 3).
+    """
+    # Calculate pairwise distances
+    n_sensors = sensor_positions_mm.shape[0]
+    d_mat = torch.norm(
+        sensor_positions_mm[:, None, :] - sensor_positions_mm[None, :, :],
+        dim=2
+    )
+    
+    # Find valid pairs (different sensors and within max distance)
+    mask = (d_mat <= max_dist) & (d_mat > 0)
+    src_idx, det_idx = torch.nonzero(mask, as_tuple=True)
+    
+    sources = sensor_positions_mm[src_idx]
+    detectors = sensor_positions_mm[det_idx]
+    
+    return sources, detectors
+
+
