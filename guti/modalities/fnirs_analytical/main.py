@@ -1,17 +1,17 @@
 # %%
-# %load_ext autoreload
-# %autoreload 2
+%load_ext autoreload
+%autoreload 2
 
 from guti.core import get_grid_positions, get_sensor_positions_spiral
 
 import numpy as np
 import torch
-from guti.modalities.fnirs_analytical.utils import cw_sensitivity, get_valid_source_detector_pairs
+from guti.modalities.fnirs_analytical.utils import cw_sensitivity, cw_sensitivity_batched, get_valid_source_detector_pairs
 from tqdm.notebook import tqdm
 
 # %%
-grid_points_mm = get_grid_positions(10)
-sensor_positions_mm = get_sensor_positions_spiral(500)
+grid_points_mm = get_grid_positions(5)
+sensor_positions_mm = get_sensor_positions_spiral(1000)
 mu_a = 0.1  # cm^-1
 mu_s_prime = 10  # cm^-1
 mu_eff = np.sqrt(3 * mu_a * (mu_s_prime + mu_a))
@@ -28,12 +28,12 @@ sensor_positions_torch = torch.from_numpy(sensor_positions_mm).float().to(device
 # Get all valid source-detector pairs
 sources, detectors = get_valid_source_detector_pairs(sensor_positions_torch, max_dist)
 
-# Calculate sensitivities for all pairs and grid points in one vectorized operation
-sensitivities = cw_sensitivity(grid_points_torch, sources, detectors, mu_eff)
+# Calculate sensitivities for all pairs and grid points using batched computation
+sensitivities = cw_sensitivity_batched(grid_points_torch, sources, detectors, mu_eff, batch_size=500)
 print(f"Sensitivities shape: {sensitivities.shape}")
 
 # %%
-sensitivities.cpu().numpy().max()
+sensitivities.max().cpu().numpy()
 
 #%%
 from guti.svd import compute_svd_gpu
@@ -41,9 +41,15 @@ from guti.svd import compute_svd_gpu
 s = compute_svd_gpu(sensitivities.cpu().numpy())
 
 #%%
-import matplotlib.pyplot as plt
+from guti.svd import plot_svd
 
-plt.semilogy(s)
+plot_svd(s)
+
+
+# %%
+from guti.data_utils import save_svd
+
+save_svd(s, "fnirs_analytical_cw")
 
 # %%
 # check sensor positions

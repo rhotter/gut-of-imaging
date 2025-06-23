@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from typing import Tuple
-
+from tqdm.notebook import tqdm
 
 def compute_perpendicular_distance(pos: torch.Tensor, source_pos: torch.Tensor, detector_pos: torch.Tensor) -> torch.Tensor:
     """
@@ -84,6 +84,53 @@ def cw_sensitivity(pos: torch.Tensor, source_pos: torch.Tensor, detector_pos: to
         / (d_source_pos**2 * d_detector_pos**2)
     )
 
+    return sensitivity
+
+
+def cw_sensitivity_batched(pos: torch.Tensor, source_pos: torch.Tensor, detector_pos: torch.Tensor, mu_eff: float, batch_size: int = 1000) -> torch.Tensor:
+    """
+    Memory-efficient batched version of cw_sensitivity that processes pairs in chunks.
+    
+    Parameters
+    ----------
+    pos : torch.Tensor
+        The positions to calculate sensitivity for. Shape (n_points, 3).
+    source_pos : torch.Tensor
+        The source positions. Shape (n_pairs, 3).
+    detector_pos : torch.Tensor
+        The detector positions. Shape (n_pairs, 3).
+    mu_eff : float
+        The effective attenuation coefficient in mm^-1.
+    batch_size : int
+        Number of pairs to process at once. Reduce this if you still get OOM errors.
+
+    Returns
+    -------
+    sensitivity : torch.Tensor
+        The sensitivity function. Shape (n_pairs, n_points).
+    """
+    n_pairs = source_pos.shape[0]
+    n_points = pos.shape[0]
+    
+    # Initialize output tensor
+    sensitivity = torch.zeros((n_pairs, n_points), dtype=torch.float32, device=pos.device)
+    
+    # Process in batches
+    for i in tqdm(range(0, n_pairs, batch_size), desc="Computing sensitivities"):
+        end_idx = min(i + batch_size, n_pairs)
+        batch_sources = source_pos[i:end_idx]
+        batch_detectors = detector_pos[i:end_idx]
+        
+        # Call the original cw_sensitivity function for this batch
+        batch_sensitivity = cw_sensitivity(pos, batch_sources, batch_detectors, mu_eff)
+        
+        # Store result
+        sensitivity[i:end_idx] = batch_sensitivity
+        
+        # Optional: clear cache to free memory
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+    
     return sensitivity
 
 
