@@ -64,11 +64,7 @@ def create_sources(domain, time_axis, freq_Hz=0.25e6, inside: bool = False, n_so
     if not inside:
         sensor_positions = get_sensor_positions_spiral(n_sensors=n_sources, offset=8)
     else:
-<<<<<<< HEAD
         sensor_positions = get_source_positions(n_sources=n_sources)
-=======
-        sensor_positions = get_source_positions(n_sources=6000)
->>>>>>> 07c94ff265ce4e3afac70dc2e6447b43565e3577
     # Convert to voxel indices
     sensor_positions_voxels = jnp.floor(sensor_positions / (jnp.array(dx) * 1e3)).astype(jnp.int32)
     x_real, y_real, z_real = sensor_positions[:, 0], sensor_positions[:, 1], sensor_positions[:, 2]
@@ -101,31 +97,19 @@ def create_sources(domain, time_axis, freq_Hz=0.25e6, inside: bool = False, n_so
     return sources, source_mask
 
 
-<<<<<<< HEAD
-def create_receivers(domain, time_axis, freq_Hz=0.25e6, n_sensors: int = 400, pad: int = 30):
-    N = domain.N
-    dx = domain.dx
-    # Get spiral sensor positions in world coordinates
-    sensor_positions = get_sensor_positions_spiral(n_sensors=n_sensors, offset=8)
-=======
-def create_receivers(domain, time_axis, freq_Hz=0.25e6, num_receivers: int = 200, start_n: int = 0, end_n: int | None = None, spiral: bool = True):
+def create_receivers(domain, time_axis, freq_Hz=0.25e6, n_sensors: int = 200, start_n: int = 0, end_n: int | None = None, spiral: bool = True):
     N = domain.N
     dx = domain.dx
     # Get spiral sensor positions in world coordinates
     if spiral:
-        sensor_positions = get_sensor_positions_spiral(n_sensors=num_receivers, offset=8, start_n=start_n, end_n=end_n)
+        sensor_positions = get_sensor_positions_spiral(n_sensors=n_sensors, offset=8, start_n=start_n, end_n=end_n)
     else:
-        sensor_positions = get_sensor_positions(n_sensors=num_receivers, offset=8, start_n=start_n, end_n=end_n)
->>>>>>> 07c94ff265ce4e3afac70dc2e6447b43565e3577
+        sensor_positions = get_sensor_positions(n_sensors=n_sensors, offset=8, start_n=start_n, end_n=end_n)
     # Convert to voxel indices
     sensor_positions_voxels = jnp.floor(sensor_positions / (jnp.array(dx) * 1e3)).astype(jnp.int32)
     x_real, y_real, z_real = sensor_positions[:, 0], sensor_positions[:, 1], sensor_positions[:, 2]
     x, y, z = sensor_positions_voxels[:, 0], sensor_positions_voxels[:, 1], sensor_positions_voxels[:, 2]
-<<<<<<< HEAD
     pad_x = pad_y = pad_z = pad
-=======
-    pad_x = pad_y = pad_z = 0
->>>>>>> 07c94ff265ce4e3afac70dc2e6447b43565e3577
     # Filter positions within the padded volume
     valid_indices = (
         (x_real >= pad_x * dx[0] * 1e3) & (x_real < N[0] * dx[0] * 1e3 + pad_x * dx[0] * 1e3) &
