@@ -8,9 +8,10 @@ import matplotlib.pyplot as plt
 
 def create_medium():
     # Simulation parameters
+    dx_mm = 0.25
     # dx_mm = 0.5
     # dx_mm = 1.5
-    dx_mm = 1.5
+    # dx_mm = 1.5
     dx = (dx_mm * 1e-3, dx_mm * 1e-3, dx_mm * 1e-3)
 
     tissues_map = get_voxel_mask(dx_mm, offset=8) #0.5mm resolution
@@ -53,19 +54,22 @@ def create_medium():
 
     return domain, medium, time_axis, brain_mask, skull_mask, scalp_mask
 
-def create_sources(domain, time_axis, freq_Hz=0.25e6, inside: bool = False):
+def create_sources(domain, time_axis, freq_Hz=0.25e6, inside: bool = False, n_sources: int = 400, pad: int = 30):
+    """
+    Create sources and source mask.
+    """
     N = domain.N
     dx = domain.dx
     # Get spiral sensor positions in world coordinates
     if not inside:
-        sensor_positions = get_sensor_positions_spiral(n_sensors=400, offset=8)
+        sensor_positions = get_sensor_positions_spiral(n_sensors=n_sources, offset=8)
     else:
-        sensor_positions = get_source_positions(n_sources=6000)
+        sensor_positions = get_source_positions(n_sources=n_sources)
     # Convert to voxel indices
     sensor_positions_voxels = jnp.floor(sensor_positions / (jnp.array(dx) * 1e3)).astype(jnp.int32)
     x_real, y_real, z_real = sensor_positions[:, 0], sensor_positions[:, 1], sensor_positions[:, 2]
     x, y, z = sensor_positions_voxels[:, 0], sensor_positions_voxels[:, 1], sensor_positions_voxels[:, 2]
-    pad_x = pad_y = pad_z = 30
+    pad_x = pad_y = pad_z = pad
     # Filter positions within the padded volume
     valid_indices = (
         (x_real >= pad_x * dx[0] * 1e3) & (x_real < N[0] * dx[0] * 1e3 + pad_x * dx[0] * 1e3) &
@@ -93,19 +97,19 @@ def create_sources(domain, time_axis, freq_Hz=0.25e6, inside: bool = False):
     return sources, source_mask
 
 
-def create_receivers(domain, time_axis, freq_Hz=0.25e6, num_receivers: int = 200, start_n: int = 0, end_n: int | None = None, spiral: bool = True):
+def create_receivers(domain, time_axis, freq_Hz=0.25e6, n_sensors: int = 200, start_n: int = 0, end_n: int | None = None, spiral: bool = True):
     N = domain.N
     dx = domain.dx
     # Get spiral sensor positions in world coordinates
     if spiral:
-        sensor_positions = get_sensor_positions_spiral(n_sensors=num_receivers, offset=8, start_n=start_n, end_n=end_n)
+        sensor_positions = get_sensor_positions_spiral(n_sensors=n_sensors, offset=8, start_n=start_n, end_n=end_n)
     else:
-        sensor_positions = get_sensor_positions(n_sensors=num_receivers, offset=8, start_n=start_n, end_n=end_n)
+        sensor_positions = get_sensor_positions(n_sensors=n_sensors, offset=8, start_n=start_n, end_n=end_n)
     # Convert to voxel indices
     sensor_positions_voxels = jnp.floor(sensor_positions / (jnp.array(dx) * 1e3)).astype(jnp.int32)
     x_real, y_real, z_real = sensor_positions[:, 0], sensor_positions[:, 1], sensor_positions[:, 2]
     x, y, z = sensor_positions_voxels[:, 0], sensor_positions_voxels[:, 1], sensor_positions_voxels[:, 2]
-    pad_x = pad_y = pad_z = 0
+    pad_x = pad_y = pad_z = pad
     # Filter positions within the padded volume
     valid_indices = (
         (x_real >= pad_x * dx[0] * 1e3) & (x_real < N[0] * dx[0] * 1e3 + pad_x * dx[0] * 1e3) &
@@ -127,9 +131,9 @@ def create_receivers(domain, time_axis, freq_Hz=0.25e6, num_receivers: int = 200
     return sensors, sensors_all, receivers_mask
 
 
-def create_sources_receivers(domain, time_axis, freq_Hz=0.25e6, inside: bool = False):
-    sources, source_mask = create_sources(domain, time_axis, freq_Hz, inside)
-    sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz)
+def create_sources_receivers(domain, time_axis, freq_Hz=0.25e6, inside: bool = False, n_sources: int = 400, n_sensors: int = 400, pad: int = 30):
+    sources, source_mask = create_sources(domain, time_axis, freq_Hz, inside, n_sources, pad)
+    sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz, n_sensors, pad)
     return sources, sensors, sensors_all, source_mask, receivers_mask
 
 def plot_medium(medium, source_mask, sources, time_axis, receivers_mask):
