@@ -106,7 +106,6 @@ def get_valid_source_detector_pairs(sensor_positions_mm: torch.Tensor, max_dist:
         Detector positions for valid pairs. Shape (n_pairs, 3).
     """
     # Calculate pairwise distances
-    n_sensors = sensor_positions_mm.shape[0]
     d_mat = torch.norm(
         sensor_positions_mm[:, None, :] - sensor_positions_mm[None, :, :],
         dim=2
