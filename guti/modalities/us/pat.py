@@ -1,6 +1,6 @@
 #%%
-# %load_ext autoreload
-# %autoreload 2
+#%load_ext autoreload
+#%autoreload 2
 
 # %%
 # ---- JAX memory behaviour ---------------------------------------------
@@ -44,24 +44,23 @@ domain, medium_original, time_axis, brain_mask, skull_mask, scalp_mask = create_
 sources, source_mask = create_sources(domain, time_axis, freq_Hz=0.1666e6, inside=True)
 sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz=0.1666e6)
 
-find_arrival_time_vectorized = vmap(lambda signal2: find_arrival_time(signal2, sources))
 
 # settings = TimeWavePropagationSettings(checkpoint=True)
 
 # Compile and create the solver functions
-@jit
-def solver_all(medium, sources):
-  return simulate_wave_propagation(medium, time_axis, sources=sources, sensors=sensors_all)
-
-@jit
-def solver_receiver(medium, sources):
-  return simulate_wave_propagation(medium, time_axis, sources=sources, sensors=sensors)
 
 plot_medium(medium_original, source_mask, sources, time_axis, receivers_mask)
 
 pml_size = medium_original.pml_size
 
 #%%
+# @jit
+# def solver_all(medium, sources, sensors):
+#   return simulate_wave_propagation(medium, time_axis, sources=sources, sensors=sensors)
+
+# @jit
+# def solver_receiver(medium, sources, sensors):
+#   return simulate_wave_propagation(medium, time_axis, sources=sources, sensors=sensors)
 
 # # Plot of the forward simulation for sanity check
 # N = domain.N
@@ -103,18 +102,18 @@ num_contrast_points = jnp.sum(source_mask)
 print(f"Number of contrast source points: {num_contrast_points}")
 
 
-def receiver_output(speed_contrast_sources):
-    speed_of_sound = speed.at[source_mask].set(speed_contrast_sources)
-    pressure = output_field(speed_of_sound, sources, sensors)
+def receiver_output_for_sensors(sensors_):
+    def receiver_output(speed_contrast_sources):
+        speed_of_sound = speed.at[source_mask].set(speed_contrast_sources)
+        pressure = output_field(speed_of_sound, sources, sensors_)
 
-    # arrival_times = find_arrival_time_vectorized(pressure[:,:,0].T)
-    # peak_freq_amp = jnp.max(jnp.abs(pressure), axis=0)
 
-    pressure_downsampled = pressure[::50,:,0].flatten()
-    
-    # Combine metrics into single differentiable output
-    # return jnp.concatenate([peak_freq_amp.ravel(), arrival_times.ravel()])
-    return pressure_downsampled
+        pressure_downsampled = pressure[::50,:,0].flatten()
+        
+        # Combine metrics into single differentiable output
+        # return jnp.concatenate([peak_freq_amp.ravel(), arrival_times.ravel()])
+        return pressure_downsampled
+    return receiver_output
 
 speed_contrast_sources = speed[source_mask]
 
@@ -146,9 +145,26 @@ speed_contrast_sources = speed[source_mask]
 # u, s, vh = jax.numpy.linalg.svd(jacobian_matrix, full_matrices=False)
 # s = s[:1000]  # Take top 1000 singular values
 
-jacobian = jax.jacrev(receiver_output)(speed_contrast_sources[:1])
-print(f"Computed Jacobian!!! shape: {jacobian.shape}")
+n_sensors_per_batch = 200
+n_batches = 10
+results = []
+for i in range(n_batches):
+  
+    sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz=0.1666e6, num_receivers=n_sensors_per_batch, spiral=False)
+    print(f"{len(sensors.positions)} sensors in batch {i}")
+    jacobian = jax.jacrev(receiver_output_for_sensors(sensors))(speed_contrast_sources)
+    results.append(jacobian)
+    print(f"Computed Jacobian!!! shape: {jacobian.shape}")
 
+jacobian = jnp.concatenate(results, axis=0)
+print(f"Total Jacobian shape: {jacobian.shape}")
+
+# %%
+i=40
+n_sensors_per_batch = 200
+n_batches = 10
+sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz=0.1666e6, num_receivers=400, start_n=0, end_n=200)
+print(sensors.positions)
 
 # %%
 
