@@ -1,23 +1,29 @@
 # %%
-%load_ext autoreload
-%autoreload 2
+try:
+    import IPython
+    IPython.get_ipython().run_line_magic('load_ext', 'autoreload')
+    IPython.get_ipython().run_line_magic('autoreload', '2')
+except:
+    pass
 
 from guti.core import get_grid_positions, get_sensor_positions_spiral
 
 import numpy as np
 import torch
-from guti.modalities.fnirs_analytical.utils import cw_sensitivity, cw_sensitivity_batched, get_valid_source_detector_pairs
-from tqdm.notebook import tqdm
+from guti.modalities.fnirs_analytical.utils import cw_sensitivity_batched, get_valid_source_detector_pairs
 
 # %%
-grid_points_mm = get_grid_positions(5)
-sensor_positions_mm = get_sensor_positions_spiral(1000)
-mu_a = 0.1  # cm^-1
-mu_s_prime = 10  # cm^-1
+grid_spacing_mm = 2.0
+noptodes = 200
+
+grid_points_mm = get_grid_positions(grid_spacing_mm)
+sensor_positions_mm = get_sensor_positions_spiral(noptodes)
+mu_a = 0.02  # cm^-1
+mu_s_prime = 6.7  # cm^-1
 mu_eff = np.sqrt(3 * mu_a * (mu_s_prime + mu_a))
 mu_eff = mu_eff * 1e-1  # mm^-1
 
-max_dist = 80  # mm
+max_dist = 50  # mm
 
 # Convert to torch tensors and move to GPU
 device = 'cuda' if torch.cuda.is_available() else 'cpu'
@@ -28,28 +34,25 @@ sensor_positions_torch = torch.from_numpy(sensor_positions_mm).float().to(device
 # Get all valid source-detector pairs
 sources, detectors = get_valid_source_detector_pairs(sensor_positions_torch, max_dist)
 
+print(f"Number of pairs: {sources.shape[0]}, Number of grid points: {grid_points_torch.shape[0]}")
 # Calculate sensitivities for all pairs and grid points using batched computation
 sensitivities = cw_sensitivity_batched(grid_points_torch, sources, detectors, mu_eff, batch_size=500)
 print(f"Sensitivities shape: {sensitivities.shape}")
 
-# %%
-sensitivities.max().cpu().numpy()
-
 #%%
 from guti.svd import compute_svd_gpu
 
-s = compute_svd_gpu(sensitivities.cpu().numpy())
+s = compute_svd_gpu(sensitivities)
 
 #%%
 from guti.svd import plot_svd
 
 plot_svd(s)
 
-
 # %%
-from guti.data_utils import save_svd
+from guti.data_utils import save_svd, Parameters
 
-save_svd(s, "fnirs_analytical_cw")
+save_svd(s, "fnirs_analytical_cw", Parameters(num_sensors=noptodes, grid_resolution=grid_spacing_mm, num_brain_grid_points=grid_points_torch.shape[0]), default=False)
 
 # %%
 # check sensor positions
