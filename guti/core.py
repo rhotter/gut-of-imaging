@@ -1,7 +1,7 @@
 import os
 import numpy as np
 from pathlib import Path
-
+import warnings
 
 np.random.seed(239)
 
@@ -19,6 +19,8 @@ N_SENSORS_DEFAULT = 100
 
 
 def get_source_positions(n_sources: int = N_SOURCES_DEFAULT) -> np.ndarray:
+    warnings.warn("get_source_positions is deprecated. Use get_grid_positions instead.")
+    
     # sample random positions inside a hemisphere
     positions = np.zeros((n_sources, 3))
     count = 0
@@ -54,6 +56,8 @@ def get_sensor_positions(
     start_n: int = 0,
     end_n: int | None = None,
 ) -> np.ndarray:
+    warnings.warn("get_sensor_positions is deprecated. Use get_sensor_positions_spiral instead.")
+    
     # sample random positions on a hemisphere
     positions = np.random.randn(n_sensors, 3)
     positions[:, 2] = np.abs(positions[:, 2])
@@ -119,6 +123,8 @@ def get_voxel_mask(resolution: float = 1, offset: float = 0) -> np.ndarray:
 
 
 def get_source_positions_halton(n_sources: int = N_SOURCES_DEFAULT) -> np.ndarray:
+    warnings.warn("get_source_positions_halton is deprecated. Use get_grid_positions instead.")
+    
     # Deterministic uniform sampling inside a hemisphere via a low-discrepancy sequence
     def van_der_corput(num: int, base: int = 2) -> float:
         vdc, denom = 0.0, 1
