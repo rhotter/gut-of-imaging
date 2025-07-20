@@ -31,8 +31,8 @@ imaging_method = 'eit'
 
 # layers from outside in: scalp, skull, csf, grey matter, white matter
 outer_radii = [7, 6.5, 6, 5.8, 5.5]  # [cm]
-# conductivities = [3.3e-3, 4.2e-5, 1.79e-3, 0.33e-3, 0.14e-3]  # [S/cm]
-conductivities = [0.2e-3, 0.2e-3, 0.2e-3, 0.2e-3, 0.2e-3]
+conductivities = [3.3e-3, 4.2e-5, 1.79e-3, 0.33e-3, 0.14e-3]  # [S/cm]
+# conductivities = [0.2e-3, 0.2e-3, 0.2e-3, 0.2e-3, 0.2e-3]
 
 # %%
 # Specify mesh-related information. 
@@ -256,17 +256,17 @@ save_sol(problem.fe, sol_list[0], vtk_path, cell_infos=[('jac0', J[0,0])])
 
 # %%
 # Compute SVD of Jacobian
-U, s, Vh = np.linalg.svd(J.reshape(J.shape[0], -1))
+s = np.linalg.svdvals(J.reshape(J.shape[0], -1))
 
 # Plot the singular values.
 plt.figure(figsize=(8, 5))
-plt.semilogy(s, 'o-', linewidth=2, markersize=5)
+plt.semilogy(s)
 plt.xlabel('Singular Value Index')
 plt.ylabel('Singular Value (log scale)')
 plt.title('Singular Values of the Jacobian')
 plt.grid(True)
-# plot_path = os.path.join(data_dir, f'{imaging_method}_singular_values.png')
-# plt.savefig(plot_path)
+plot_path = os.path.join(data_dir, f'{imaging_method}_singular_values.png')
+plt.savefig(plot_path)
 plt.show()
 
 

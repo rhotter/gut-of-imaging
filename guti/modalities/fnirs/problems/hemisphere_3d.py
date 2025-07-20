@@ -17,6 +17,7 @@ def hemisphere_3d(
     sensor_pos = get_sensor_positions_spiral(noptodes)
     sensor_pos /= voxel_size_mm
     mask = get_voxel_mask(voxel_size_mm)
+    brain_mask = mask == 1
 
     # set optical properties
     g = 0.9  # anisotropy factor
@@ -39,4 +40,4 @@ def hemisphere_3d(
     src_dirs = center_point - source_pos
     src_dirs = src_dirs / np.linalg.norm(src_dirs, axis=1)[:, None]
     sensors = SensorGeometry(source_pos, det_pos, src_dirs)
-    return medium, sensors
+    return medium, sensors, brain_mask

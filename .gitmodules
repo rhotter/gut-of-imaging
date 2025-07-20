@@ -1,0 +1,3 @@
+[submodule "guti/modalities/openmeeg_sample_data"]
+	path = guti/modalities/openmeeg_sample_data
+	url = https://github.com/openmeeg/openmeeg_sample_data.git

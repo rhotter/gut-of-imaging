@@ -1,4 +1,4 @@
-from guti.core import get_voxel_mask, get_sensor_positions_spiral, get_source_positions
+from guti.core import get_voxel_mask, get_sensor_positions_spiral, get_source_positions, get_sensor_positions
 from jwave import FourierSeries, FiniteDifferences
 from jwave.geometry import Domain, Medium, TimeAxis
 from jwave.geometry import Sources, Sensors
@@ -8,9 +8,10 @@ import matplotlib.pyplot as plt
 
 def create_medium():
     # Simulation parameters
+    dx_mm = 0.25
     # dx_mm = 0.5
-    dx_mm = 1.5
-    # dx_mm = 3
+    # dx_mm = 1.5
+    # dx_mm = 1.5
     dx = (dx_mm * 1e-3, dx_mm * 1e-3, dx_mm * 1e-3)
 
     tissues_map = get_voxel_mask(dx_mm, offset=8) #0.5mm resolution
@@ -53,62 +54,86 @@ def create_medium():
 
     return domain, medium, time_axis, brain_mask, skull_mask, scalp_mask
 
-def create_sources_receivers(domain, time_axis, freq_Hz=0.25e6):
-    # Create a 128x128 square of sources centered in x and at y=25
+def create_sources(domain, time_axis, freq_Hz=0.25e6, inside: bool = False, n_sources: int = 400, pad: int = 30):
+    """
+    Create sources and source mask.
+    """
     N = domain.N
     dx = domain.dx
-    sensor_positions = get_sensor_positions_spiral(n_sensors=400, offset=8)
-    print(f"Sensor positions mins: {sensor_positions.min(axis=0)}")
-    print(f"Sensor positions maxs: {sensor_positions.max(axis=0)}")
-    sensor_positions_voxels = jnp.floor(sensor_positions / (jnp.array(dx)*1e3)).astype(jnp.int32)
+    # Get spiral sensor positions in world coordinates
+    if not inside:
+        sensor_positions = get_sensor_positions_spiral(n_sensors=n_sources, offset=8)
+    else:
+        sensor_positions = get_source_positions(n_sources=n_sources)
+    # Convert to voxel indices
+    sensor_positions_voxels = jnp.floor(sensor_positions / (jnp.array(dx) * 1e3)).astype(jnp.int32)
     x_real, y_real, z_real = sensor_positions[:, 0], sensor_positions[:, 1], sensor_positions[:, 2]
-    x,y,z = sensor_positions_voxels[:, 0], sensor_positions_voxels[:, 1], sensor_positions_voxels[:, 2]
-    pad_x = 30
-    pad_y = 30
-    pad_z = 30
-    # Filter sensor positions to only include those within the volume
-    valid_indices = (x_real >= pad_x*dx[0]*1e3) & (x_real < N[0]*dx[0]*1e3 + pad_x*dx[0]*1e3) & \
-                    (y_real >= pad_y*dx[1]*1e3) & (y_real < N[1]*dx[1]*1e3 + pad_y*dx[1]*1e3) & \
-                    (z_real >= pad_z*dx[2]*1e3) & (z_real < N[2]*dx[2]*1e3 + pad_z*dx[2]*1e3)
-    
-    x -= pad_x
-    y -= pad_y
-    z -= pad_z
-    
-    # Update sensor positions to only include valid ones
-    x = x[valid_indices]
-    y = y[valid_indices]
-    z = z[valid_indices]
-    sensor_positions = sensor_positions[valid_indices]
+    x, y, z = sensor_positions_voxels[:, 0], sensor_positions_voxels[:, 1], sensor_positions_voxels[:, 2]
+    pad_x = pad_y = pad_z = pad
+    # Filter positions within the padded volume
+    valid_indices = (
+        (x_real >= pad_x * dx[0] * 1e3) & (x_real < N[0] * dx[0] * 1e3 + pad_x * dx[0] * 1e3) &
+        (y_real >= pad_y * dx[1] * 1e3) & (y_real < N[1] * dx[1] * 1e3 + pad_y * dx[1] * 1e3) &
+        (z_real >= pad_z * dx[2] * 1e3) & (z_real < N[2] * dx[2] * 1e3 + pad_z * dx[2] * 1e3)
+    )
+    x -= pad_x; y -= pad_y; z -= pad_z
+    x, y, z = x[valid_indices], y[valid_indices], z[valid_indices]
+    N_sources = x.shape[0]
 
-    print(f"Sensor positions: {sensor_positions}")
+    # Create source signals
+    signal = jnp.sin(2 * jnp.pi * freq_Hz * time_axis.to_array())
+    T = 1 / freq_Hz
+    max_signal_index = int(T / time_axis.dt)
+    signal = signal.at[max_signal_index * 2 :].set(0)
+    signals = jnp.stack([signal] * N_sources)
 
-    N_sources = sensor_positions.shape[0]
-    
-    print(f"Number of sources: {N_sources}")
-
-
-    signal = jnp.sin(2*jnp.pi*freq_Hz*time_axis.to_array())
-    T = 1/freq_Hz
-    max_signal_index = int(T/time_axis.dt)
-    print(f"Max signal index: {max_signal_index}")
-    signal = signal.at[max_signal_index*2:].set(0)
-    signals = jnp.stack([signal] * N_sources)  # One signal for each source point
+    # Instantiate sources
     sources = Sources(positions=(x, y, z), signals=signals, dt=time_axis.dt, domain=domain)
 
-    # Create a mask for the sources and receivers
-    # source_mask = jnp.full((int(time_axis.Nt),) + N, False)
+    # Create source mask
     source_mask = jnp.full((1,) + N, False)
     source_mask = source_mask.at[:, x, y, z].set(True)
-    receivers_mask = jnp.full(N, False)
 
-    # Create a mask for the receivers
+    return sources, source_mask
+
+
+def create_receivers(domain, time_axis, freq_Hz=0.25e6, n_sensors: int = 200, start_n: int = 0, end_n: int | None = None, spiral: bool = True, pad: int = 30):
+    N = domain.N
+    dx = domain.dx
+    # Get spiral sensor positions in world coordinates
+    if spiral:
+        sensor_positions = get_sensor_positions_spiral(n_sensors=n_sensors, offset=8, start_n=start_n, end_n=end_n)
+    else:
+        sensor_positions = get_sensor_positions(n_sensors=n_sensors, offset=8, start_n=start_n, end_n=end_n)
+    # Convert to voxel indices
+    sensor_positions_voxels = jnp.floor(sensor_positions / (jnp.array(dx) * 1e3)).astype(jnp.int32)
+    x_real, y_real, z_real = sensor_positions[:, 0], sensor_positions[:, 1], sensor_positions[:, 2]
+    x, y, z = sensor_positions_voxels[:, 0], sensor_positions_voxels[:, 1], sensor_positions_voxels[:, 2]
+    pad_x = pad_y = pad_z = pad
+    # Filter positions within the padded volume
+    valid_indices = (
+        (x_real >= pad_x * dx[0] * 1e3) & (x_real < N[0] * dx[0] * 1e3 + pad_x * dx[0] * 1e3) &
+        (y_real >= pad_y * dx[1] * 1e3) & (y_real < N[1] * dx[1] * 1e3 + pad_y * dx[1] * 1e3) &
+        (z_real >= pad_z * dx[2] * 1e3) & (z_real < N[2] * dx[2] * 1e3 + pad_z * dx[2] * 1e3)
+    )
+    x -= pad_x; y -= pad_y; z -= pad_z
+    x, y, z = x[valid_indices], y[valid_indices], z[valid_indices]
+
+    # Create receiver mask
+    receivers_mask = jnp.full(N, False)
     receivers_mask = receivers_mask.at[x, y, z].set(True)
     receiver_positions = jnp.argwhere(receivers_mask)
 
-    sensors = Sensors(positions=tuple((receiver_positions.T).tolist()))
+    # Instantiate sensors
+    sensors = Sensors(positions=tuple(receiver_positions.T.tolist()))
     sensors_all = Sensors(positions=tuple(jnp.argwhere(jnp.ones(N)).T.tolist()))
 
+    return sensors, sensors_all, receivers_mask
+
+
+def create_sources_receivers(domain, time_axis, freq_Hz=0.25e6, inside: bool = False, n_sources: int = 400, n_sensors: int = 400, pad: int = 30):
+    sources, source_mask = create_sources(domain, time_axis, freq_Hz, inside, n_sources, pad)
+    sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz, n_sensors, pad)
     return sources, sensors, sensors_all, source_mask, receivers_mask
 
 def plot_medium(medium, source_mask, sources, time_axis, receivers_mask):

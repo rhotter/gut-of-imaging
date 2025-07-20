@@ -22,4 +22,4 @@ class SensorGeometry:
         self.nsrc = self.src_pos.shape[0]
         self.ndet = self.det_pos.shape[0]
         if self.det_radii is None:
-            self.det_radii = 3 * np.ones((self.ndet, 1))
+            self.det_radii = 10 * np.ones((self.ndet, 1))

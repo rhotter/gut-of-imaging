@@ -265,3 +265,74 @@ def plot_slice(
     ax.set_title(title)
 
     return fig, ax
+
+
+def visualize_grid_and_sensors(grid_points_mm, sensor_positions_mm):
+    """
+    Visualize grid points and sensor positions in 3D using Plotly.
+    
+    Parameters:
+    -----------
+    grid_points_mm : np.ndarray
+        Array of shape (n_grid, 3) containing grid point positions in mm.
+    sensor_positions_mm : np.ndarray
+        Array of shape (n_sensors, 3) containing sensor positions in mm.
+    sources : torch.Tensor, optional
+        Source positions for valid pairs.
+    detectors : torch.Tensor, optional
+        Detector positions for valid pairs.
+    sensitivities : torch.Tensor, optional
+        Sensitivities tensor.
+    
+    Returns:
+    --------
+    fig : plotly.graph_objects.Figure
+        The plotly figure object.
+    """
+    # Create 3D scatter plot with Plotly
+    fig = go.Figure()
+
+    # Add grid points trace
+    fig.add_trace(go.Scatter3d(
+        x=grid_points_mm[:, 0],
+        y=grid_points_mm[:, 1], 
+        z=grid_points_mm[:, 2],
+        mode='markers',
+        marker=dict(
+            size=2,
+            color='blue',
+            opacity=0.3
+        ),
+        name='Grid Points'
+    ))
+
+    # Add sensor positions trace
+    fig.add_trace(go.Scatter3d(
+        x=sensor_positions_mm[:, 0],
+        y=sensor_positions_mm[:, 1],
+        z=sensor_positions_mm[:, 2], 
+        mode='markers',
+        marker=dict(
+            size=5,
+            color='red',
+            opacity=0.8
+        ),
+        name='Sensors'
+    ))
+
+    # Update layout
+    fig.update_layout(
+        title='3D Grid Points and Sensor Positions',
+        scene=dict(
+            xaxis_title='X (mm)',
+            yaxis_title='Y (mm)', 
+            zaxis_title='Z (mm)',
+            aspectmode='cube'
+        ),
+        width=800,
+        height=600
+    )
+
+    fig.show()
+    
+    return fig
