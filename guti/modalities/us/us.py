@@ -21,9 +21,12 @@ from jax import grad, value_and_grad
 import jax
 from jax import vmap
 
+import jax
+
 from scipy.sparse.linalg import LinearOperator, svds
 
-from guti.modalities.us.utils import create_medium, create_sources_receivers, plot_medium
+from guti.modalities.us.utils import create_medium, create_sources_receivers, plot_medium, find_arrival_time
+import scipy.sparse
 
 
 #NOTE: There's a bug in jwave, where the gradients are not computed correctly when using FiniteDifferences. Therefore, we use the FourierSeries class instead.
@@ -35,7 +38,9 @@ print(f"JAX is using CUDA: {is_cuda}")
 
 domain, medium_original, time_axis, brain_mask, skull_mask, scalp_mask = create_medium()
 
-sources, sensors, sensors_all, source_mask, receivers_mask = create_sources_receivers(domain, time_axis, freq_Hz=0.15e6)
+sources, sensors, sensors_all, source_mask, receivers_mask = create_sources_receivers(domain, time_axis, freq_Hz=0.1666e6)
+
+find_arrival_time_vectorized = vmap(lambda signal2: find_arrival_time(signal2, sources))
 
 # settings = TimeWavePropagationSettings(checkpoint=True)
 
@@ -71,7 +76,7 @@ pml_size = medium_original.pml_size
 
 #%%
 
-# settings = TimeWavePropagationSettings(checkpoint=True)
+settings = TimeWavePropagationSettings(checkpoint=True)
 
 # Jax function to map a speed of sound map to the corresponding pressure field
 def output_field(s, sources, sensors):
@@ -80,54 +85,9 @@ def output_field(s, sources, sensors):
     density_field = jax.lax.stop_gradient(medium_original.density)
     medium = Medium(domain=domain, sound_speed=sound_speed2, density=density_field, pml_size=pml_size)
     # Get pressure field
-    # pressure = simulate_wave_propagation(medium, time_axis, sources=sources, sensors=sensors, settings=settings)
-    pressure = simulate_wave_propagation(medium, time_axis, sources=sources, sensors=sensors)
+    pressure = simulate_wave_propagation(medium, time_axis, sources=sources, sensors=sensors, settings=settings)
+    # pressure = simulate_wave_propagation(medium, time_axis, sources=sources, sensors=sensors)
     return pressure
-
-#%%
-
-# Define function that converts the waveforms at the receiver sensors, to the final sensor output. In this case, we define the final sensor output to be the arrival time of the waveform for each sensor.
-
-def find_arrival_time(signal2, sources):
-  signal = sources.signals[0]
-  # Cross-correlate with signal to get arrival times
-  # Compute cross-correlation in time domain
-  # Run correlation on CPU to avoid GPU segfault
-  # Compute cross-correlation directly on GPU
-  # Avoid using jnp.correlate which can cause segfaults
-  # Implement correlation manually using FFT for better stability
-  # Use time-domain approach to avoid segfaults
-  # correlation = jnp.zeros(len(signal))
-  # for i in range(len(signal)):
-  #   shift = jnp.roll(signal, i)
-  #   correlation = correlation.at[i].set(jnp.sum(signal2 * shift))
-
-  correlation = jnp.correlate(signal2, signal, mode='full')[-len(signal):]
-  
-  # Alternative: use numpy for correlation which is more stable
-  # signal2_np = np.array(signal2)
-  # signal_np = np.array(signal)
-  # correlation = jnp.array(np.correlate(signal2_np, signal_np, mode='full'))
-  # correlation = correlation[len(signal)-1:2*len(signal)-1]  # Extract the relevant part
-  # Apply a peak detection to find the maximum correlation
-  max_idx = jnp.argmax(correlation)
-  correlation = correlation / (jnp.max(correlation) + 1e-8)  # Normalize for numerical stability
-
-  # Use softmax-based differentiable argmax
-  # Temperature parameter controls sharpness of the softmax
-  temperature = 1e-2
-  softmax_weights = jax.nn.softmax(correlation / temperature, axis=0)
-
-  # Compute weighted sum of time indices
-  time_axis_array = time_axis.to_array()
-  arrival_times = jnp.sum(softmax_weights * time_axis_array, axis=0)
-
-  return arrival_times
-
-print(find_arrival_time(jnp.roll(sources.signals[0], 100), sources))
-
-
-find_arrival_time_vectorized = vmap(lambda signal2: find_arrival_time(signal2, sources))
 
 #%%
 
@@ -155,7 +115,7 @@ def receiver_output(speed_contrast_sources):
     # arrival_times = find_arrival_time_vectorized(pressure[:,:,0].T)
     # peak_freq_amp = jnp.max(jnp.abs(pressure), axis=0)
 
-    pressure_downsampled = pressure[::10,:,0].flatten()
+    pressure_downsampled = pressure[::50,:,0].flatten()
     
     # Combine metrics into single differentiable output
     # return jnp.concatenate([peak_freq_amp.ravel(), arrival_times.ravel()])
@@ -165,75 +125,45 @@ speed_contrast_sources = speed[contrast_sources_mask]
 
 #%%
 
-print("Computing Jacobian")
-
-
-# jacobian = jax.jacobian(receiver_output)(speed_contrast_sources)
-# Reduce memory usage by using block-wise Jacobian computation
-# n = speed_contrast_sources.size
-# block_size = 1  # tune empirically based on available memory
-
-# Compute a single row of the Jacobian to avoid memory issues
-# Using a unit vector for the first parameter only
-# unit_vector = jnp.zeros_like(speed_contrast_sources)
-# unit_vector = unit_vector.at[0].set(1.0)
-# y, partial_jacobian = jax.jvp(receiver_output, (speed_contrast_sources,), (unit_vector,))
-# jax.vjp(receiver_output, speed_contrast_sources, jnp.ones_like(receiver_output(speed_contrast_sources)))
-
-#%%
-
-# Create a function that computes JVP for a batch of vectors
-# jac_block = jax.vmap(
-#     lambda v: jax.jvp(receiver_output, (speed_contrast_sources,), (v,))[1]
-# )
-
-# # Create basis vectors in blocks to reduce memory usage
-# basis = jnp.eye(n)
-# # Reshape basis into blocks and compute Jacobian block by block
-# jacobian = jnp.concatenate([
-#     jac_block(basis[:, i:min(i+block_size, n)].T) 
-#     for i in range(0, n, block_size)
-# ], axis=1)
-# Use jacrev instead of jacfwd to save memory
-# jacrev computes the Jacobian row-by-row which is more memory efficient
-# jacobian = jax.jacrev(receiver_output)(speed_contrast_sources)
-# jacobian = jax.linearize(receiver_output, speed_contrast_sources)
-
-# y, pullback = jax.linearize(receiver_output, speed_contrast_sources)
+# print("Computing Jacobian")
 
 # from scipy.sparse.linalg import LinearOperator, svds
 
-# Forward  product  J @ v
-def J_mv(v):
-    return jax.jvp(receiver_output,
-                   (speed_contrast_sources,),
-                   (v,))[1]
+# # Forward  product  J @ v
+# def J_mv(v):
+#     return jax.jvp(receiver_output,
+#                    (speed_contrast_sources,),
+#                    (v,))[1]
 
-# Adjoint product Jᵀ @ u
-def JT_mv(u):
-    return jax.vjp(receiver_output,
-                   speed_contrast_sources)[1](u)[0]
+# # Adjoint product Jᵀ @ u
+# def JT_mv(u):
+#     return jax.vjp(receiver_output,
+#                    speed_contrast_sources)[1](u)[0]
 
-out_size = receiver_output(speed_contrast_sources).size
-in_size  = speed_contrast_sources.size
+# out_size = receiver_output(speed_contrast_sources).size
+# in_size  = speed_contrast_sources.size
 
-J_linop = LinearOperator((out_size, in_size),
-                         matvec=J_mv,
-                         rmatvec=JT_mv,
-                         dtype=np.float32)
+# # Compute Jacobian directly with JAX for GPU
+# jacobian_fn = jax.jacrev(receiver_output)
+# jacobian_matrix = jacobian_fn(speed_contrast_sources)
 
-_, s, _ = svds(J_linop, k=1000)      # top-20 singular values only
+# # Compute SVD directly on GPU using JAX
+# u, s, vh = jax.numpy.linalg.svd(jacobian_matrix, full_matrices=False)
+# s = s[:1000]  # Take top 1000 singular values
+
+jacobian = jax.jacrev(receiver_output)(speed_contrast_sources)
 
 
 # %%
 
 # # Compute the singular value spectrum.
 
-# import scipy.sparse
 
 # # Save the Jacobian matrix to a file
 # np.save('jacobian_amplitude_arrival.npy', np.array(jacobian))
-# # u, s, vh = np.linalg.svd(np.array(jacobian), full_matrices=False)
+u, s, vh = np.linalg.svd(np.array(jacobian))
+
+# u, s, vh = jax.numpy.linalg.svd(jacobian, full_matrices=False)
 
 # u, s, vh = scipy.sparse.linalg.svds(jacobian, k=1000)
 
@@ -255,6 +185,11 @@ plt.show()
 
 #%%
 
+from guti.data_utils import save_svd
+
+save_svd(s, 'us')
+
+#%%
 
 # # Example of computing gradients of an objective function with respect to the speed of sound map.
 # # We need to perturb the speed of sound map so that the gradients are not zero.

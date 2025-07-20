@@ -9,11 +9,12 @@ import matplotlib.pyplot as plt
 def create_medium():
     # Simulation parameters
     # dx_mm = 0.5
-    dx_mm = 2.0
+    dx_mm = 1.5
     # dx_mm = 3
     dx = (dx_mm * 1e-3, dx_mm * 1e-3, dx_mm * 1e-3)
 
     tissues_map = get_voxel_mask(dx_mm, offset=8) #0.5mm resolution
+    tissues_map = tissues_map[30:-30,30:-30,30:]
     N = tuple(tissues_map.shape)
     print(f"Domain size: {N}")
     domain = Domain(N, dx)
@@ -43,7 +44,7 @@ def create_medium():
 
     # Update the tissue masks to match the padded domain
     medium = Medium(domain=domain, sound_speed=sound_speed, density=density_field, pml_size=pml_size)
-    time_axis = TimeAxis.from_medium(medium, cfl=0.15, t_end=100e-06)
+    time_axis = TimeAxis.from_medium(medium, cfl=0.15, t_end=50e-06)
     # time_axis = TimeAxis.from_medium(medium, cfl=0.3, t_end=5e-06)
 
     brain_mask = tissues_map == 1
@@ -56,12 +57,35 @@ def create_sources_receivers(domain, time_axis, freq_Hz=0.25e6):
     # Create a 128x128 square of sources centered in x and at y=25
     N = domain.N
     dx = domain.dx
-    sensor_positions = get_sensor_positions_spiral(offset=8)
+    sensor_positions = get_sensor_positions_spiral(n_sensors=400, offset=8)
+    print(f"Sensor positions mins: {sensor_positions.min(axis=0)}")
+    print(f"Sensor positions maxs: {sensor_positions.max(axis=0)}")
     sensor_positions_voxels = jnp.floor(sensor_positions / (jnp.array(dx)*1e3)).astype(jnp.int32)
+    x_real, y_real, z_real = sensor_positions[:, 0], sensor_positions[:, 1], sensor_positions[:, 2]
     x,y,z = sensor_positions_voxels[:, 0], sensor_positions_voxels[:, 1], sensor_positions_voxels[:, 2]
+    pad_x = 30
+    pad_y = 30
+    pad_z = 30
+    # Filter sensor positions to only include those within the volume
+    valid_indices = (x_real >= pad_x*dx[0]*1e3) & (x_real < N[0]*dx[0]*1e3 + pad_x*dx[0]*1e3) & \
+                    (y_real >= pad_y*dx[1]*1e3) & (y_real < N[1]*dx[1]*1e3 + pad_y*dx[1]*1e3) & \
+                    (z_real >= pad_z*dx[2]*1e3) & (z_real < N[2]*dx[2]*1e3 + pad_z*dx[2]*1e3)
+    
+    x -= pad_x
+    y -= pad_y
+    z -= pad_z
+    
+    # Update sensor positions to only include valid ones
+    x = x[valid_indices]
+    y = y[valid_indices]
+    z = z[valid_indices]
+    sensor_positions = sensor_positions[valid_indices]
+
     print(f"Sensor positions: {sensor_positions}")
 
     N_sources = sensor_positions.shape[0]
+    
+    print(f"Number of sources: {N_sources}")
 
 
     signal = jnp.sin(2*jnp.pi*freq_Hz*time_axis.to_array())
@@ -77,8 +101,6 @@ def create_sources_receivers(domain, time_axis, freq_Hz=0.25e6):
     source_mask = jnp.full((1,) + N, False)
     source_mask = source_mask.at[:, x, y, z].set(True)
     receivers_mask = jnp.full(N, False)
-
-
 
     # Create a mask for the receivers
     receivers_mask = receivers_mask.at[x, y, z].set(True)
@@ -127,3 +149,27 @@ def plot_medium(medium, source_mask, sources, time_axis, receivers_mask):
     plt.ylabel('Amplitude')
     plt.grid(True)
     plt.show()
+
+
+
+# Define function that converts the waveforms at the receiver sensors, to the final sensor output. In this case, we define the final sensor output to be the arrival time of the waveform for each sensor.
+
+def find_arrival_time(signal2, sources):
+  signal = sources.signals[0]
+  # Cross-correlate with signal to get arrival times
+
+  correlation = jnp.correlate(signal2, signal, mode='full')[-len(signal):]
+
+  max_idx = jnp.argmax(correlation)
+  correlation = correlation / (jnp.max(correlation) + 1e-8)  # Normalize for numerical stability
+
+  # Use softmax-based differentiable argmax
+  # Temperature parameter controls sharpness of the softmax
+  temperature = 1e-2
+  softmax_weights = jax.nn.softmax(correlation / temperature, axis=0)
+
+  # Compute weighted sum of time indices
+  time_axis_array = time_axis.to_array()
+  arrival_times = jnp.sum(softmax_weights * time_axis_array, axis=0)
+
+  return arrival_times

@@ -1,4 +1,5 @@
-jax[cuda12]==0.5.2
+jax[cuda12]==0.4.28
+jaxlib[cuda12]==0.4.28
 jaxdf==0.2.8
 jwave==0.2.1
 matplotlib==3.7.3
