@@ -65,8 +65,8 @@ def simulate_free_field_propagation(
     # Combines point source pressure equation p = (4πR)^(-1) * m''(t-R/c) (see Pierce's acoustics formula 4.3.8)
     # with K-wave's pressure-to-density source conversion
     # The mass source acceleration m'' is related to pressure through the wavenumber k
-    # Final formula: P = 1/(4πR) * (2/c) * peak_pressure * dx^2
-    # where R is distance, c is sound speed, dx is voxel size
+    # Final formula: P = 1/(4πR) * (2π/λ) * peak_pressure * dx^2
+    # where R is distance, λ is wavelength, dx is voxel size
     
     # Calculate propagator factor (spatial Green's function component)
     wavelength = sound_speed / center_frequency
@@ -76,7 +76,7 @@ def simulate_free_field_propagation(
     
     # If only the propagator matrix is required, return early
     if not compute_time_series:
-        return propagator_factor
+        return propagator_factor * torch.exp(-1j * wavenumber * distances)
     
     # Calculate retardation times and time steps (only needed when computing full time series)
     travel_times = distances / sound_speed
@@ -101,25 +101,28 @@ def simulate_free_field_propagation(
     # Create source indices for broadcasting
     source_idx = torch.arange(num_sources).unsqueeze(0).expand(num_receivers, num_sources).to(device)
     
-    # Vectorized computation across the *selected* time steps only
-    # Create time grid for selected indices
-    t_grid = selected_time_indices.unsqueeze(0).unsqueeze(0)  # [1, 1, n_selected]
-    delay_grid = delay_steps.unsqueeze(-1)  # [num_receivers, num_sources, 1]
-
-    # Calculate time indices for all combinations but only at sampled times
-    time_indices = t_grid - delay_grid + 1  # [num_receivers, num_sources, n_selected]
-    time_indices = torch.clamp(time_indices, min=0, max=padded_source_signals.shape[1] - 1)
-
-    # Gather delayed signals for sampled time steps at once
+    # ------------------------------------------------------------------
+    # Serial computation across the selected time steps to save memory
+    # ------------------------------------------------------------------
     n_selected = selected_time_indices.shape[0]
-    source_idx_expanded = source_idx.unsqueeze(-1).expand(-1, -1, n_selected)
-    delayed_signals = padded_source_signals[source_idx_expanded, time_indices]
-    
-    # Apply propagator factors
-    propagator_expanded = propagator_factor.unsqueeze(-1)  # [num_receivers, num_sources, 1]
-    weighted_signals = delayed_signals * propagator_expanded
-    pressure_field = weighted_signals  # [n_receivers, n_sources, n_selected]
-    
+    pressure_field = torch.empty(
+        (num_receivers, num_sources, n_selected),
+        dtype=padded_source_signals.dtype,
+        device=device,
+    )
+
+    for idx, t_idx in enumerate(selected_time_indices):
+        # Compute delayed time indices for this specific time step
+        time_idx_matrix = t_idx - delay_steps + 1
+        time_idx_matrix = torch.clamp(time_idx_matrix, min=0, max=padded_source_signals.shape[1] - 1)
+
+        # Gather delayed signals for the current time step
+        delayed_signals_step = padded_source_signals[source_idx, time_idx_matrix]
+
+        # Apply propagator factor and store in output tensor
+        pressure_field[:, :, idx] = delayed_signals_step * propagator_factor
+
+    # Return the serially computed pressure field
     return pressure_field
 
 # %%
@@ -128,8 +131,9 @@ from guti.modalities.us.utils import create_medium, create_sources, create_recei
 
 domain, medium_original, time_axis, brain_mask, skull_mask, scalp_mask = create_medium()
 
+center_frequency = 1.5e6
 sources, source_mask = create_sources(domain, time_axis, freq_Hz=1e6, n_sources=8000, pad=0, inside=True)
-sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz=1e6, n_sensors=8000, pad=0)
+sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz=center_frequency, n_sensors=8000, pad=0)
 
 # %%
 
@@ -141,7 +145,6 @@ sensor_positions = np.stack([np.array(x) for x in sensors.positions]).T
 
 n_sources = source_positions.shape[0]
 
-center_frequency = 2e6
 time_step = 1e-1 / center_frequency
 time_duration = 120e-6
 time_axis = np.arange(0, time_duration, time_step)
@@ -157,6 +160,12 @@ print(f"Coinciding source and sensor positions: {torch.argwhere(torch.all(torch.
 # device = "cuda"
 device = "cpu"
 
+temporal_sampling = 5
+# temporal_sampling = 1
+
+# use_complex_ampitudes = True
+use_complex_ampitudes = False
+
 pressure_field = simulate_free_field_propagation(
     torch.tensor(source_positions).to(device),
     torch.tensor(sensor_positions).to(device),
@@ -165,43 +174,35 @@ pressure_field = simulate_free_field_propagation(
     center_frequency,
     torch.tensor(voxel_size).to(device),
     device=device,
-    compute_time_series=True,
-    temporal_sampling=10
+    compute_time_series=not use_complex_ampitudes,
+    temporal_sampling=temporal_sampling
 ) # [n_sensors, n_sources]
 
 # %%
 
-pressure_field = pressure_field.cpu()
+pressure_field = pressure_field.reshape(-1, n_sources)
 
-if pressure_field.ndim == 3:
-    # matrix = pressure_field.permute(0,2,1).reshape(-1, source_signals.shape[0])
-    # The matrix below should have the same singular values, but be easier to compute
-    # matrix = pressure_field.max(dim=2).values
-    # Compute FFT along time dimension (dim=2)
-    fft_result = torch.fft.fft(pressure_field, dim=2)
-    
-    # Get magnitude of FFT
-    fft_magnitude = torch.abs(fft_result)
-    
-    # Find index of peak magnitude for each source-receiver pair
-    peak_indices = torch.argmax(fft_magnitude, dim=2)
-    
-    # Get complex values at peak frequencies
-    batch_indices = torch.arange(fft_result.shape[0]).unsqueeze(1).expand(-1, fft_result.shape[1])
-    source_indices = torch.arange(fft_result.shape[1]).unsqueeze(0).expand(fft_result.shape[0], -1)
-    peak_complex = fft_result[batch_indices, source_indices, peak_indices]
-    
-    # Split into real and imaginary parts and stack
-    matrix = torch.cat([peak_complex.real, peak_complex.imag], dim=0)
+# IF WE WANTED TO COMPUTE PHASES
+if use_complex_ampitudes:
+    matrix = torch.cat([pressure_field.real, pressure_field.imag], dim=0).float()
 else:
-    matrix = pressure_field  # already [n_receivers, n_sources]
+    matrix = pressure_field.float()  # already [n_receivers, n_sources]
 
 # %%
 
 # maybe can use something like this to simulate Born's approximation (see https://ausargeo.com/deepwave/scalar_born)
 # matrix = matrix * matrix
 
-s = torch.linalg.svdvals(matrix).cpu().numpy()
+matrix = matrix.cuda()
+
+smaller_matrix = matrix.T @ matrix
+
+# s = torch.linalg.svdvals(matrix, driver="gesvd").cpu().numpy()
+s = torch.linalg.svdvals(smaller_matrix)
+
+s = torch.sqrt(s)
+
+s = s.cpu().numpy()
 
 # %%
 
