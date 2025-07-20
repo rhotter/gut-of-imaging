@@ -73,7 +73,6 @@ def save_svd(
     s: NDArray,
     modality_name: str,
     params: Optional[Parameters] = None,
-    default: bool = True,
     subdir: Optional[str] = None,
 ) -> None:
     """
@@ -94,20 +93,11 @@ def save_svd(
             time_resolution: float,
             comment: str
         )
-    default : bool, optional
-        If True, save as default configuration in results/.
-        If False, save as variant in results/variants/ with parameter hash.
-        Default is True.
     subdir : str, optional
-        Subdirectory within variants/ to organize parameter sweeps.
-        Only used when default=False. Creates subdirectory if it doesn't exist.
+        Subdirectory within variants/[modality_name]/ to organize parameter sweeps.
 
-    Notes
-    -----
-    - When default=True: saved as '{modality_name}_svd_spectrum.npz' in results/
-    - When default=False: saved as '{modality_name}_svd_spectrum_{hash}.npz' in results/variants/[subdir]/
     """
-    if default:
+    if subdir is None:
         # Save as default configuration in main results directory
         filepath = os.path.join(RESULTS_DIR, f"{modality_name}_svd_spectrum.npz")
         if params is None:
@@ -123,16 +113,11 @@ def save_svd(
             params = Parameters()
         params_hash = _generate_params_hash(params)
 
-        # Determine the target directory
-        if subdir is not None:
-            target_dir = os.path.join(VARIANTS_DIR, subdir)
-            os.makedirs(target_dir, exist_ok=True)
-        else:
-            target_dir = VARIANTS_DIR
+        # Determine the target directory: variants/[modality_name]/[subdir]/
+        target_dir = os.path.join(VARIANTS_DIR, modality_name, subdir)
+        os.makedirs(target_dir, exist_ok=True)
 
-        filepath = os.path.join(
-            target_dir, f"{modality_name}_svd_spectrum_{params_hash}.npz"
-        )
+        filepath = os.path.join(target_dir, f"{params_hash}.npz")
         structured_params = asdict(params)
         np.savez(filepath, singular_values=s, parameters=structured_params)  # type: ignore
         print(f"Saved variant SVD spectrum to {filepath}")
@@ -195,7 +180,7 @@ def load_svd_variant(
     params_hash : str
         Hash of the parameter configuration
     subdir : str, optional
-        Subdirectory within variants/ where the file is located
+        Subdirectory within variants/[modality_name]/ where the file is located
 
     Returns
     -------
@@ -204,12 +189,10 @@ def load_svd_variant(
     """
     if subdir is not None:
         filepath = os.path.join(
-            VARIANTS_DIR, subdir, f"{modality_name}_svd_spectrum_{params_hash}.npz"
+            VARIANTS_DIR, modality_name, subdir, f"{params_hash}.npz"
         )
     else:
-        filepath = os.path.join(
-            VARIANTS_DIR, f"{modality_name}_svd_spectrum_{params_hash}.npz"
-        )
+        filepath = os.path.join(VARIANTS_DIR, modality_name, f"{params_hash}.npz")
     data = np.load(filepath, allow_pickle=True)
     params_dict = data["parameters"].item()
     return data["singular_values"], Parameters.from_dict(params_dict)
@@ -226,7 +209,7 @@ def list_svd_variants(
     modality_name : str
         Name of modality, e.g. 'fnirs_cw' or 'eeg'
     subdir : str, optional
-        Subdirectory within variants/ to search in
+        Subdirectory within variants/[modality_name]/ to search in
 
     Returns
     -------
@@ -234,20 +217,22 @@ def list_svd_variants(
         Dictionary mapping parameter hashes to Parameters objects
     """
     variants = {}
-    pattern = f"{modality_name}_svd_spectrum_"
 
     # Determine the directory to search in
     if subdir is not None:
-        search_dir = os.path.join(VARIANTS_DIR, subdir)
+        search_dir = os.path.join(VARIANTS_DIR, modality_name, subdir)
         if not os.path.exists(search_dir):
             return variants
     else:
-        search_dir = VARIANTS_DIR
+        search_dir = os.path.join(VARIANTS_DIR, modality_name)
+
+    if not os.path.exists(search_dir):
+        return variants
 
     for filename in os.listdir(search_dir):
-        if filename.startswith(pattern) and filename.endswith(".npz"):
-            # Extract hash from filename
-            hash_part = filename[len(pattern) : -4]  # Remove prefix and .npz suffix
+        if filename.endswith(".npz"):
+            # Extract hash from filename (hash is the filename without .npz)
+            hash_part = filename[:-4]  # Remove .npz suffix
             if len(hash_part) == 8:  # Our hashes are 8 characters
                 try:
                     s, params = load_svd_variant(modality_name, hash_part, subdir)
