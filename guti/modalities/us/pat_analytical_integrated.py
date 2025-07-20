@@ -141,12 +141,14 @@ def analytical_solver(source_positions, detector_positions, center_mm):
         phi_src = jnp.full(N_detectors, phi_sources[i_src])
         # Compute responses for this source to all detectors
         # responses = compute_analytical_response_batch(gamma_det, phi_det, R_src, angle_src, phi_src)
-        # the response is P = 1/(4πd) * exp(-attenuation * d - j * k * d) * exp(-skull_attenuation * d_skull - j * k * d_skull) * source_strength, where k=2π/λ
+        # the response is P = 1/(4πd) * exp(-attenuation * d - j * k * d) * exp(-skull_attenuation * d_skull / cos(theta) - j * k * d_skull) * source_strength, where k=2π/λ
+        # theta is the angle between the line from the source to the detector and the normal to the skull surface at the detector (aka the line to the center of the brain)
         d_skull = R_skull - R_brain
+        cos_theta = jnp.abs(jnp.dot(detectors_jax - sources_jax[i_src], center_jax - sources_jax[i_src]) / jnp.linalg.norm(detectors_jax - sources_jax[i_src]) / jnp.linalg.norm(center_jax - sources_jax[i_src]))
         d = jnp.linalg.norm(detectors_jax - sources_jax[i_src], axis=1) - d_skull
         wavelength = 1500 / 1.5e6    # mm
         k = 2 * jnp.pi / wavelength
-        responses = 1 / (4 * jnp.pi * d) * jnp.exp(-beta_skull * d_skull - 1j * k * d_skull) * jnp.exp(-alpha_brain * d - 1j * k * d)
+        responses = 1 / (4 * jnp.pi * d) * jnp.exp(-beta_skull * d_skull - 1j * k * d_skull / cos_theta) * jnp.exp(-alpha_brain * d - 1j * k * d)
 
         signals = signals.at[:, i_src].set(responses)
         
@@ -333,105 +335,7 @@ def plot_coupling_matrix(jacobian, source_pos, detector_pos):
     print(f"Number of finite values: {np.sum(np.isfinite(jacobian))}")
     print(f"Condition number: {np.linalg.cond(jacobian):.2e}")
 
-# ── Debugging functions ──────────────────────────────────────────────────────
-def debug_infinite_values(jacobian, source_pos, detector_pos, center_mm, n_samples=50):
-    """Debug which source-detector pairs produce infinite values"""
-    
-    # Find infinite values
-    inf_mask = np.isinf(jacobian)
-    inf_indices = np.where(inf_mask)
-    
-    print(f"\nDebugging Infinite Values:")
-    print(f"Total infinite values: {np.sum(inf_mask)}")
-    print(f"Matrix shape: {jacobian.shape}")
-    print(f"Percentage infinite: {100 * np.sum(inf_mask) / jacobian.size:.2f}%")
-    
-    if np.sum(inf_mask) == 0:
-        print("No infinite values found!")
-        return
-    
-    # Get detector and source indices for infinite values
-    detector_indices = inf_indices[0]  # Row indices (detectors)
-    source_indices = inf_indices[1]    # Column indices (sources)
-    
-    print(f"\nInfinite values found at {len(detector_indices)} positions")
-    
-    # Sample random subset if too many
-    n_inf = len(detector_indices)
-    if n_inf > n_samples:
-        print(f"Sampling {n_samples} random pairs from {n_inf} infinite values...")
-        sample_idx = np.random.choice(n_inf, n_samples, replace=False)
-        sample_det_idx = detector_indices[sample_idx]
-        sample_src_idx = source_indices[sample_idx]
-    else:
-        print(f"Showing all {n_inf} infinite value pairs...")
-        sample_det_idx = detector_indices
-        sample_src_idx = source_indices
-    
-    print(f"\nSource-Detector pairs producing infinite values:")
-    print(f"{'Pair':<5} {'Det_Idx':<7} {'Src_Idx':<7} {'Detector Position (mm)':<25} {'Source Position (mm)':<25} {'Distance':<10}")
-    print("-" * 90)
-    
-    for i, (det_idx, src_idx) in enumerate(zip(sample_det_idx, sample_src_idx)):
-        det_pos = detector_pos[det_idx]
-        src_pos = source_pos[src_idx]
-        distance = np.linalg.norm(det_pos - src_pos)
-        
-        print(f"{i+1:<5} {det_idx:<7} {src_idx:<7} "
-              f"[{det_pos[0]:6.1f},{det_pos[1]:6.1f},{det_pos[2]:6.1f}]     "
-              f"[{src_pos[0]:6.1f},{src_pos[1]:6.1f},{src_pos[2]:6.1f}]     "
-              f"{distance:6.1f} mm")
-    
-    # Analyze patterns
-    print(f"\nAnalysis of infinite value pairs:")
-    
-    # Distance statistics
-    all_inf_distances = []
-    all_inf_det_pos = []
-    all_inf_src_pos = []
-    
-    for det_idx, src_idx in zip(detector_indices, source_indices):
-        det_pos = detector_pos[det_idx]
-        src_pos = source_pos[src_idx]
-        distance = np.linalg.norm(det_pos - src_pos)
-        all_inf_distances.append(distance)
-        all_inf_det_pos.append(det_pos)
-        all_inf_src_pos.append(src_pos)
-    
-    all_inf_distances = np.array(all_inf_distances)
-    all_inf_det_pos = np.array(all_inf_det_pos)
-    all_inf_src_pos = np.array(all_inf_src_pos)
-    
-    print(f"Distance statistics for infinite pairs:")
-    print(f"  Min distance: {np.min(all_inf_distances):.2f} mm")
-    print(f"  Max distance: {np.max(all_inf_distances):.2f} mm")
-    print(f"  Mean distance: {np.mean(all_inf_distances):.2f} mm")
-    print(f"  Std distance: {np.std(all_inf_distances):.2f} mm")
-    
-    # Check coordinate conversion values for a few samples
-    print(f"\nCoordinate conversion analysis for first 5 infinite pairs:")
-    from guti.modalities.us.pat_analytical_integrated import get_detector_angles, get_source_params
-    
-    for i in range(min(5, len(sample_det_idx))):
-        det_idx = sample_det_idx[i]
-        src_idx = sample_src_idx[i]
-        
-        det_pos = detector_pos[det_idx:det_idx+1]  # Keep as array
-        src_pos = source_pos[src_idx:src_idx+1]   # Keep as array
-        
-        gamma_det, phi_det = get_detector_angles(det_pos, center_mm)
-        R_src, source_angle, phi_src = get_source_params(src_pos, center_mm)
-        
-        print(f"  Pair {i+1}: det_idx={det_idx}, src_idx={src_idx}")
-        print(f"    Detector angles: gamma={gamma_det[0]:.4f}, phi={phi_det[0]:.4f}")
-        print(f"    Source params: R={R_src[0]:.4f}, angle={source_angle[0]:.4f}")
-        print(f"    Source angle (degrees): {np.degrees(source_angle[0]):.2f}°")
-        
-        # Check if source angle is close to ±90 degrees (tan singularity)
-        if abs(abs(source_angle[0]) - np.pi/2) < 0.1:
-            print(f"    *** WARNING: Source angle near ±90° - tan() singularity! ***")
 
-# ── Main execution ────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     print("Computing analytical ultrasound Jacobian...")
     
@@ -444,8 +348,6 @@ if __name__ == "__main__":
     # Plot coupling matrix
     print("\nPlotting coupling matrix...")
     plot_coupling_matrix(jacobian, source_pos, detector_pos)
-
-    debug_infinite_values(jacobian, source_pos, detector_pos, np.array([0, 0, 0]))
     
     # Compute SVD
     print("Computing SVD...")
