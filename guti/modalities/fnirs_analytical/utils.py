@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from typing import Tuple
-from tqdm.notebook import tqdm
+from tqdm.auto import tqdm
 
 
 def compute_perpendicular_distance(

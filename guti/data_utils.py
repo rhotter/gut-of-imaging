@@ -3,7 +3,7 @@ import os
 import hashlib
 import json
 from dataclasses import dataclass, asdict
-from typing import Optional, Union, Tuple, Dict
+from typing import Optional, Union, Tuple, Dict, List
 from numpy.typing import NDArray
 
 # Get the absolute path to the results directory at the root level
@@ -19,7 +19,7 @@ os.makedirs(VARIANTS_DIR, exist_ok=True)
 class Parameters:
     """
     Parameters structure for SVD analysis.
-    
+
     Attributes
     ----------
     num_sensors : int, optional
@@ -33,23 +33,32 @@ class Parameters:
     comment : str, optional
         Additional comment or description
     """
+
     num_sensors: Optional[int] = None
-    grid_resolution: Optional[float] = None
+    grid_resolution_mm: Optional[float] = None
     num_brain_grid_points: Optional[int] = None
     time_resolution: Optional[float] = None
     comment: Optional[str] = None
-    
+
     @classmethod
-    def from_dict(cls, data: Dict) -> 'Parameters':
+    def from_dict(cls, data: Dict) -> "Parameters":
         """Create Parameters object from dictionary."""
         return cls(
-            num_sensors=data.get('num_sensors'),
-            grid_resolution=data.get('grid_resolution'),
-            num_brain_grid_points=data.get('num_brain_grid_points'),
-            time_resolution=data.get('time_resolution'),
-            comment=data.get('comment')
+            num_sensors=data.get("num_sensors"),
+            grid_resolution_mm=data.get("grid_resolution_mm")
+            or data.get("grid_resolution"),
+            num_brain_grid_points=data.get("num_brain_grid_points"),
+            time_resolution=data.get("time_resolution"),
+            comment=data.get("comment"),
         )
 
+    def __str__(self) -> str:
+        fields = []
+        for field in self.__dataclass_fields__:
+            value = getattr(self, field)
+            if value is not None:
+                fields.append(f"{field}={value!r}")
+        return f"Parameters({', '.join(fields)})" if fields else "Parameters()"
 
 
 def _generate_params_hash(params: Parameters) -> str:
@@ -60,7 +69,13 @@ def _generate_params_hash(params: Parameters) -> str:
     return hashlib.md5(params_str.encode()).hexdigest()[:8]
 
 
-def save_svd(s: NDArray, modality_name: str, params: Optional[Parameters] = None, default: bool = True) -> None:
+def save_svd(
+    s: NDArray,
+    modality_name: str,
+    params: Optional[Parameters] = None,
+    default: bool = True,
+    subdir: Optional[str] = None,
+) -> None:
     """
     Save the singular value spectrum and optional parameters to a file.
 
@@ -83,11 +98,14 @@ def save_svd(s: NDArray, modality_name: str, params: Optional[Parameters] = None
         If True, save as default configuration in results/.
         If False, save as variant in results/variants/ with parameter hash.
         Default is True.
-        
+    subdir : str, optional
+        Subdirectory within variants/ to organize parameter sweeps.
+        Only used when default=False. Creates subdirectory if it doesn't exist.
+
     Notes
     -----
     - When default=True: saved as '{modality_name}_svd_spectrum.npz' in results/
-    - When default=False: saved as '{modality_name}_svd_spectrum_{hash}.npz' in results/variants/
+    - When default=False: saved as '{modality_name}_svd_spectrum_{hash}.npz' in results/variants/[subdir]/
     """
     if default:
         # Save as default configuration in main results directory
@@ -104,7 +122,17 @@ def save_svd(s: NDArray, modality_name: str, params: Optional[Parameters] = None
             # If no params provided but default=False, create empty params for hashing
             params = Parameters()
         params_hash = _generate_params_hash(params)
-        filepath = os.path.join(VARIANTS_DIR, f"{modality_name}_svd_spectrum_{params_hash}.npz")
+
+        # Determine the target directory
+        if subdir is not None:
+            target_dir = os.path.join(VARIANTS_DIR, subdir)
+            os.makedirs(target_dir, exist_ok=True)
+        else:
+            target_dir = VARIANTS_DIR
+
+        filepath = os.path.join(
+            target_dir, f"{modality_name}_svd_spectrum_{params_hash}.npz"
+        )
         structured_params = asdict(params)
         np.savez(filepath, singular_values=s, parameters=structured_params)  # type: ignore
         print(f"Saved variant SVD spectrum to {filepath}")
@@ -154,7 +182,9 @@ def load_all_svds() -> Dict[str, Tuple[NDArray, Optional[Parameters]]]:
     return results
 
 
-def load_svd_variant(modality_name: str, params_hash: str) -> Tuple[NDArray, Optional[Parameters]]:
+def load_svd_variant(
+    modality_name: str, params_hash: str, subdir: Optional[str] = None
+) -> Tuple[NDArray, Optional[Parameters]]:
     """
     Load a specific parameter variant of the SVD spectrum.
 
@@ -164,19 +194,30 @@ def load_svd_variant(modality_name: str, params_hash: str) -> Tuple[NDArray, Opt
         Name of modality, e.g. 'fnirs_cw' or 'eeg'
     params_hash : str
         Hash of the parameter configuration
+    subdir : str, optional
+        Subdirectory within variants/ where the file is located
 
     Returns
     -------
     tuple
         (singular_values, parameters) where parameters is a Parameters object
     """
-    filepath = os.path.join(VARIANTS_DIR, f"{modality_name}_svd_spectrum_{params_hash}.npz")
+    if subdir is not None:
+        filepath = os.path.join(
+            VARIANTS_DIR, subdir, f"{modality_name}_svd_spectrum_{params_hash}.npz"
+        )
+    else:
+        filepath = os.path.join(
+            VARIANTS_DIR, f"{modality_name}_svd_spectrum_{params_hash}.npz"
+        )
     data = np.load(filepath, allow_pickle=True)
     params_dict = data["parameters"].item()
     return data["singular_values"], Parameters.from_dict(params_dict)
 
 
-def list_svd_variants(modality_name: str) -> Dict[str, Parameters]:
+def list_svd_variants(
+    modality_name: str, subdir: Optional[str] = None
+) -> Dict[str, Parameters]:
     """
     List all available parameter variants for a modality.
 
@@ -184,6 +225,8 @@ def list_svd_variants(modality_name: str) -> Dict[str, Parameters]:
     ----------
     modality_name : str
         Name of modality, e.g. 'fnirs_cw' or 'eeg'
+    subdir : str, optional
+        Subdirectory within variants/ to search in
 
     Returns
     -------
@@ -192,17 +235,25 @@ def list_svd_variants(modality_name: str) -> Dict[str, Parameters]:
     """
     variants = {}
     pattern = f"{modality_name}_svd_spectrum_"
-    
-    for filename in os.listdir(VARIANTS_DIR):
+
+    # Determine the directory to search in
+    if subdir is not None:
+        search_dir = os.path.join(VARIANTS_DIR, subdir)
+        if not os.path.exists(search_dir):
+            return variants
+    else:
+        search_dir = VARIANTS_DIR
+
+    for filename in os.listdir(search_dir):
         if filename.startswith(pattern) and filename.endswith(".npz"):
             # Extract hash from filename
-            hash_part = filename[len(pattern):-4]  # Remove prefix and .npz suffix
+            hash_part = filename[len(pattern) : -4]  # Remove prefix and .npz suffix
             if len(hash_part) == 8:  # Our hashes are 8 characters
                 try:
-                    _, params = load_svd_variant(modality_name, hash_part)
+                    s, params = load_svd_variant(modality_name, hash_part, subdir)
                     if params is not None:
-                        variants[hash_part] = params
+                        variants[hash_part] = dict(s=s, params=params)
                 except FileNotFoundError:
                     continue
-    
+
     return variants

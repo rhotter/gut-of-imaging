@@ -17,8 +17,8 @@ from guti.modalities.fnirs_analytical.utils import (
 )
 
 # %%
-grid_spacing_mm = 2.0
-noptodes = 200
+grid_spacing_mm = 5.0
+noptodes = 800
 
 grid_points_mm = get_grid_positions(grid_spacing_mm)
 sensor_positions_mm = get_sensor_positions_spiral(noptodes)
@@ -65,20 +65,21 @@ save_svd(
     "fnirs_analytical_cw",
     Parameters(
         num_sensors=noptodes,
-        grid_resolution=grid_spacing_mm,
+        grid_resolution_mm=grid_spacing_mm,
         num_brain_grid_points=grid_points_torch.shape[0],
     ),
     default=False,
+    subdir="grid_resolution_sweep",  # Organize baseline runs in their own subdirectory
 )
 
 # %%
-# check sensor positions
-from guti.viz import visualize_grid_and_sensors
+# # check sensor positions
+# from guti.viz import visualize_grid_and_sensors
 
-fig = visualize_grid_and_sensors(
-    grid_points_mm,
-    sensor_positions_mm,
-)
+# fig = visualize_grid_and_sensors(
+#     grid_points_mm,
+#     sensor_positions_mm,
+# )
 
 
 # %%
