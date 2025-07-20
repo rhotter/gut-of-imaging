@@ -25,9 +25,6 @@ h_skull = R_skull - R_brain # 6 mm - skull thickness
 alpha_brain = 0.01151  # Neper/mm (brain attenuation)
 beta_skull = 0.1151    # Neper/mm (skull attenuation)
 
-# Integration parameters
-D_integration = 0.1    # Integration window half-width
-n_integration = 50     # Grid size for integration
 
 print(f"Using geometry: brain={R_brain}mm, skull={R_skull}mm, scalp={R_scalp}mm")
 print(f"Skull thickness: {h_skull}mm")
@@ -106,81 +103,6 @@ def get_source_params(source_pos, center):
     
     return R, source_angle, phi
 
-# ── Analytical integrand function ─────────────────────────────────────────────
-@jit
-def analytical_integrand(Dphi, Dgamma, gamma0, phi0, R, source_angle, phi_src):
-    """Analytical integrand for ultrasound propagation through brain and skull
-    
-    Based on the analytical expressions from pat_analytical.py, adapted for
-    the correct geometry and attenuation coefficients.
-    """
-    # Convert to local variables for clarity
-    r = R_brain  # Inner radius (brain)
-    alpha = alpha_brain
-    beta = beta_skull
-    h = h_skull
-    phi = phi0 - phi_src
-    
-    # Clamp source_angle to avoid tan() singularities
-    source_angle_safe = jnp.clip(source_angle, -jnp.pi/2 + 1e-6, jnp.pi/2 - 1e-6)
-    t = jnp.tan(source_angle_safe)
-    
-    # Distance calculation (from analytical model)
-    d_squared = (
-        (r * jnp.sin(gamma0) - R * t)**2
-        + R**2
-        + (r * jnp.cos(gamma0))**2
-        - 2 * r * R * jnp.cos(phi)
-    )
-    
-    # Ensure d_squared is positive and add small epsilon for numerical stability
-    d_squared = jnp.maximum(d_squared, 1e-9)
-    d = jnp.sqrt(d_squared)
-    
-    # Add minimum threshold for d to prevent division by zero
-    d_safe = jnp.maximum(d, 1e-8)
-    
-    # Terms for the exponential
-    term1 = h**2 + (r * Dphi)**2 + (r * Dgamma)**2
-    term2 = (
-        d_safe
-        + Dgamma * r * R * t * jnp.cos(gamma0) / d_safe
-        - r * R * jnp.sin(phi) * Dphi / d_safe
-    )
-    
-    # Exponential argument with safety checks
-    expo_part1 = -beta * term1 * term2 / (d_safe**2)
-    expo_part2 = alpha * (d_safe 
-                         - r * R * t * jnp.cos(gamma0) / d_safe
-                         + r * R * jnp.sin(phi) / d_safe)
-    
-    expo = expo_part1 + expo_part2
-    
-    # Clamp exponential argument to prevent overflow/underflow
-    expo_safe = jnp.clip(expo, -500, 500)  # exp(-500) ≈ 0, exp(500) is very large but finite
-    
-    return jnp.exp(expo_safe)
-
-# ── Integration function ──────────────────────────────────────────────────────
-@jit
-def compute_analytical_response(gamma0, phi0, R, source_angle, phi_src):
-    """Compute the analytical ultrasound response for given source-detector pair"""
-    # Create integration grids
-    dp = jnp.linspace(-D_integration, D_integration, n_integration)
-    dg = jnp.linspace(-D_integration, D_integration, n_integration)
-    DP, DG = jnp.meshgrid(dp, dg, indexing='xy')
-    
-    # Compute integrand values
-    vals = analytical_integrand(DP, DG, gamma0, phi0, R, source_angle, phi_src)
-    
-    # 2D trapezoidal integration using JAX's trapezoid function
-    I_phi = trapezoid(vals, x=dp, axis=0)
-    I_total = trapezoid(I_phi, x=dg, axis=0)
-    
-    return I_total
-
-# Vectorize for multiple source-detector pairs
-compute_analytical_response_batch = vmap(compute_analytical_response, in_axes=(0, 0, 0, 0, 0))
 
 # ── Main analytical solver ────────────────────────────────────────────────────
 def analytical_solver(source_positions, detector_positions, center_mm):
@@ -218,7 +140,14 @@ def analytical_solver(source_positions, detector_positions, center_mm):
         angle_src = jnp.full(N_detectors, source_angles[i_src])
         phi_src = jnp.full(N_detectors, phi_sources[i_src])
         # Compute responses for this source to all detectors
-        responses = compute_analytical_response_batch(gamma_det, phi_det, R_src, angle_src, phi_src)
+        # responses = compute_analytical_response_batch(gamma_det, phi_det, R_src, angle_src, phi_src)
+        # the response is P = 1/(4πd) * exp(-attenuation * d - j * k * d) * exp(-skull_attenuation * d_skull - j * k * d_skull) * source_strength, where k=2π/λ
+        d_skull = R_skull - R_brain
+        d = jnp.linalg.norm(detectors_jax - sources_jax[i_src], axis=1) - d_skull
+        wavelength = 1500 / 1.5e6    # mm
+        k = 2 * jnp.pi / wavelength
+        responses = 1 / (4 * jnp.pi * d) * jnp.exp(-beta_skull * d_skull - 1j * k * d_skull) * jnp.exp(-alpha_brain * d - 1j * k * d)
+
         signals = signals.at[:, i_src].set(responses)
         
         if i_src % 100 == 0:
@@ -235,11 +164,11 @@ def create_analytical_jacobian():
     
     # Get source positions (inside brain)
     print("Creating sources...")
-    source_positions_mm = get_source_positions() - np.array([R_brain, R_brain, 0])
+    source_positions_mm = get_source_positions(4000) - np.array([R_brain, R_brain, 0])
     
     # Get detector positions (on scalp surface)  
     print("Creating detectors...")
-    n_detectors = 400
+    n_detectors = 4000
     detector_positions_mm = get_sensor_positions_spiral(n_sensors=n_detectors, offset=10) - np.array([SCALP_RADIUS, SCALP_RADIUS, 0])
   
     # Compute analytical signals
