@@ -24,8 +24,8 @@ dg = torch.linspace(-D, D, n_int)
 DP, DG = torch.meshgrid(dp, dg, indexing='xy')
 
 # ── Integrand function ───────────────────────────────────────────────────────
-def integrand(Dphi, Dgamma, gamma0, phi0):
-    t = torch.tan(alpha)
+def integrand(Dphi, Dgamma, gamma0, phi0, source_angle=0):
+    t = torch.tan(source_angle)
     d = torch.sqrt(
         (r * torch.sin(gamma0) - R*t)**2
       + R**2
