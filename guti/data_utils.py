@@ -39,6 +39,7 @@ class Parameters:
     num_brain_grid_points: Optional[int] = None
     time_resolution: Optional[float] = None
     comment: Optional[str] = None
+    noise_full_brain: Optional[float] = None
 
     @classmethod
     def from_dict(cls, data: Dict) -> "Parameters":
@@ -50,6 +51,7 @@ class Parameters:
             num_brain_grid_points=data.get("num_brain_grid_points"),
             time_resolution=data.get("time_resolution"),
             comment=data.get("comment"),
+            noise_full_brain=data.get("noise_full_brain"),
         )
 
     def __str__(self) -> str:
@@ -91,7 +93,8 @@ def save_svd(
             grid_resolution: float,
             num_brain_grid_points: int,
             time_resolution: float,
-            comment: str
+            comment: str,
+            noise_full_brain: float
         )
     subdir : str, optional
         Subdirectory within variants/[modality_name]/ to organize parameter sweeps.

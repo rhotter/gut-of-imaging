@@ -360,3 +360,7 @@ def create_bem_model():
             f.write(
                 f"{pos[0]:.6f}\t{pos[1]:.6f}\t{pos[2]:.6f}\t{ori[0]:.6f}\t{ori[1]:.6f}\t{ori[2]:.6f}\n"
             )
+
+
+def get_bitrate(svd_spectrum: np.ndarray, noise_full_brain: float, time_resolution: float = 1., n_detectors: int | None = None) -> float:
+    return (1 / time_resolution) * np.sum(np.log2(1 + svd_spectrum / (noise_full_brain / np.sqrt(n_detectors or len(svd_spectrum)))))
