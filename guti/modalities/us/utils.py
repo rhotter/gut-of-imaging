@@ -327,4 +327,4 @@ def simulate_free_field_propagation(
 
 
 def get_bitrate(svd_spectrum: np.ndarray, noise_full_brain: float, time_resolution: float = 1., n_detectors: int | None = None) -> float:
-    return (1 / time_resolution) * np.sum(np.log2(1 + svd_spectrum / (noise_full_brain / (n_detectors or len(svd_spectrum)))))
+    return (1 / time_resolution) * np.sum(np.log2(1 + svd_spectrum / (noise_full_brain / np.sqrt(n_detectors or len(svd_spectrum)))))
