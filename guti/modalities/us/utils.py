@@ -3,6 +3,7 @@ from jwave import FourierSeries, FiniteDifferences
 from jwave.geometry import Domain, Medium, TimeAxis
 from jwave.geometry import Sources, Sensors
 import jax.numpy as jnp
+import numpy as np
 import matplotlib.pyplot as plt
 import torch
 import jax
@@ -323,3 +324,7 @@ def simulate_free_field_propagation(
 
     # Return the serially computed pressure field
     return pressure_field
+
+
+def get_bitrate(svd_spectrum: np.ndarray, noise_full_brain: float, time_resolution: float = 1., n_detectors: int | None = None) -> float:
+    return (1 / time_resolution) * np.sum(np.log2(1 + svd_spectrum / (noise_full_brain / (n_detectors or len(svd_spectrum)))))
