@@ -23,6 +23,8 @@ n_sources = args.n_sources
 n_sensors = args.n_sensors
 temporal_sampling = args.temporal_sampling
 
+print(f"n_sources: {n_sources}, n_sensors: {n_sensors}, temporal_sampling: {temporal_sampling}")
+
 domain, medium_original, time_axis, brain_mask, skull_mask, scalp_mask = create_medium()
 
 center_frequency = 1.5e6
@@ -56,6 +58,8 @@ temporal_sampling = 5
 
 use_complex_ampitudes = False
 
+print("Running free field propagation...")
+
 pressure_field = simulate_free_field_propagation(
     torch.tensor(source_positions).to(device),
     torch.tensor(sensor_positions).to(device),
@@ -67,6 +71,8 @@ pressure_field = simulate_free_field_propagation(
     compute_time_series=not use_complex_ampitudes,
     temporal_sampling=temporal_sampling
 ) # [n_sensors, n_sources]
+
+print("Done!")
 
 # %%
 
@@ -80,8 +86,7 @@ else:
 
 # %%
 
-# maybe can use something like this to simulate Born's approximation (see https://ausargeo.com/deepwave/scalar_born)
-# matrix = matrix * matrix
+print("Computing SVD...")
 
 matrix = matrix.cuda()
 
@@ -91,10 +96,20 @@ s = torch.linalg.svdvals(smaller_matrix)
 s = torch.sqrt(s)
 s = s.cpu().numpy()
 
+print("Done!")
+
 # %%
 
 plt.semilogy(s)
 
-save_svd(s, 'us_analytical')
+from guti.data_utils import Parameters
+
+save_svd(s, 'us_analytical', params=Parameters(
+    num_sensors=len(sensor_positions),
+    grid_resolution_mm=None,
+    num_brain_grid_points=len(source_positions),
+    time_resolution=time_step,
+    comment=None
+), subdir="us_free_field_analytical")
 
 # %%
