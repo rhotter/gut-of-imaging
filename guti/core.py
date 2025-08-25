@@ -120,17 +120,20 @@ def get_voxel_mask(resolution: float = 1, offset: float = 0) -> np.ndarray:
 
 # ---- FEM mesh functions ----
 
-def create_sphere(radius, n_phi=8, n_theta=8):
+def create_sphere(radius, n_phi=8, n_theta=8, resolution=None):
     """Create a sphere mesh.
 
     Parameters
     ----------
     radius : float
-        Radius of the sphere
-    n_phi : int
-        Number of points in the azimuthal direction
-    n_theta : int
-        Number of points in the polar direction (full sphere: 0 to π)
+        Radius of the sphere in meters
+    n_phi : int, optional
+        Number of points in the azimuthal direction (ignored if resolution is provided)
+    n_theta : int, optional
+        Number of points in the polar direction (ignored if resolution is provided)
+    resolution : float, optional
+        Desired grid spacing in meters. If provided, n_phi and n_theta are calculated
+        automatically to achieve approximately uniform grid spacing.
 
     Returns
     -------
@@ -139,6 +142,22 @@ def create_sphere(radius, n_phi=8, n_theta=8):
     triangles : ndarray
         Triangle indices (0-based)
     """
+    if resolution is not None:
+        # Calculate n_phi and n_theta based on desired resolution
+        # For uniform spacing, we want approximately equal arc lengths
+        # Arc length = radius * angle, so angle = resolution / radius
+        
+        # Calculate n_phi based on circumference at equator
+        n_phi = max(8, int(2 * np.pi * radius / resolution))
+        
+        # Calculate n_theta based on meridian length
+        # For uniform spacing, we want similar arc lengths in both directions
+        n_theta = max(8, int(np.pi * radius / resolution))
+        
+        # Ensure n_phi is even for better triangulation
+        if n_phi % 2 != 0:
+            n_phi += 1
+    
     # Generate grid of points in spherical coordinates
     # For a full sphere, theta goes from 0 to π
     theta = np.linspace(0, np.pi, n_theta)
@@ -201,6 +220,7 @@ def create_sphere(radius, n_phi=8, n_theta=8):
         triangles.append([v1, v3, v2])  # Note reversed order for proper orientation
 
     triangles = np.array(triangles)
+    print(f"Created sphere with {len(vertices)} vertices and {len(triangles)} triangles")
 
     return vertices, triangles
 
@@ -309,7 +329,8 @@ def create_bem_model():
         ("skull", SKULL_RADIUS),
         ("scalp", SCALP_RADIUS),
     ]:
-        vertices, triangles = create_sphere(radius, n_phi=64, n_theta=64)
+        # vertices, triangles = create_sphere(radius, n_phi=16, n_theta=10)
+        vertices, triangles = create_sphere(radius, resolution=10)
         write_tri(f"bem_model/{name}_sphere.tri", vertices, triangles)
 
     # Create the geometry file (format 1.1)
