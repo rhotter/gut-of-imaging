@@ -1,4 +1,4 @@
-from guti.core import get_voxel_mask, get_sensor_positions_spiral, get_source_positions, get_sensor_positions
+from guti.core import get_voxel_mask, get_sensor_positions, get_source_positions, get_sensor_positions
 from jwave import FourierSeries, FiniteDifferences
 from jwave.geometry import Domain, Medium, TimeAxis
 from jwave.geometry import Sources, Sensors
@@ -65,7 +65,7 @@ def create_sources(domain, time_axis, freq_Hz=0.25e6, inside: bool = False, n_so
     dx = domain.dx
     # Get spiral sensor positions in world coordinates
     if not inside:
-        sensor_positions = get_sensor_positions_spiral(n_sensors=n_sources, offset=8)
+        sensor_positions = get_sensor_positions(n_sensors=n_sources, offset=8)
     else:
         sensor_positions = get_source_positions(n_sources=n_sources)
     # Convert to voxel indices
@@ -105,7 +105,7 @@ def create_receivers(domain, time_axis, freq_Hz=0.25e6, n_sensors: int = 200, st
     dx = domain.dx
     # Get spiral sensor positions in world coordinates
     if spiral:
-        sensor_positions = get_sensor_positions_spiral(n_sensors=n_sensors, offset=8, start_n=start_n, end_n=end_n)
+        sensor_positions = get_sensor_positions(n_sensors=n_sensors, offset=8, start_n=start_n, end_n=end_n)
     else:
         sensor_positions = get_sensor_positions(n_sensors=n_sensors, offset=8, start_n=start_n, end_n=end_n)
     print("Got sensor positions")
