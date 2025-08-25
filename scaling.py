@@ -19,7 +19,8 @@ modality_name = "us_analytical"
 # subdir = "grid_sweep"
 # param_key = "grid_resolution_mm"
 # subdir = "us_free_field_analytical"
-subdir = "us_free_field_analytical_n_sources_sweep"
+# subdir = "us_free_field_analytical_n_sources_sweep"
+subdir = "us_free_field_analytical_n_sources_sweep_300khz"
 param_key = "num_brain_grid_points"
 
 variants = list_svd_variants(modality_name, subdir=subdir)
@@ -69,18 +70,20 @@ plt.figure(figsize=(10, 6))
 param_values = []
 bitrates = []
 
+n_sensors = 8000
+
 
 for k, v in sorted_variants:
     params = v["params"]
     s = v["s"]
     param_value = getattr(params, param_key)
-    noise_level = noise_floor_heuristic(s, heuristic="power")
+    noise_level = noise_floor_heuristic(s, heuristic="power", n_detectors=n_sensors)
     
     # Get time resolution if available, otherwise use default 1.0
     # time_res = params.time_resolution if params.time_resolution is not None else 1.0
     time_res = 1.0
     
-    bitrate = get_bitrate(s, noise_level, time_resolution=time_res)
+    bitrate = get_bitrate(s, noise_level, time_resolution=time_res, n_detectors=n_sensors)
     
     param_values.append(param_value)
     bitrates.append(bitrate)
@@ -91,39 +94,5 @@ plt.ylabel('Bitrate (bits/s)')
 plt.title(f'Bitrate vs {param_key} - {modality_name}')
 plt.grid(True)
 plt.show()
-
-# %%
-from guti.core import get_bitrate, noise_floor_heuristic
-
-# Plot bitrate vs parameter value for each singular value
-plt.figure(figsize=(10, 6))
-
-bitrates = []
-param_values = []
-
-for k, v in sorted_variants:
-    params = v["params"] 
-    s = v["s"]
-    param_value = getattr(params, param_key)
-    noise_level = noise_floor_heuristic(s, heuristic="power")
-    
-    bitrate = get_bitrate(s, noise_level, time_resolution=1.0)
-    bitrates.append(bitrate)
-    param_values.append(param_value)
-
-plt.plot(param_values, bitrates)
-plt.xscale("log")
-plt.xlabel("Number of Brain Grid Points")
-plt.ylabel("Bitrate (bits/s)")
-plt.title(f"Bitrate vs Number of SVs for different {param_key} - {modality_name}")
-plt.yscale("log")
-plt.xticks(ticks=np.logspace(np.log10(min(param_values)), np.log10(max(param_values)), num=10))
-plt.yticks(ticks=np.logspace(np.log10(min(bitrates)), np.log10(max(bitrates)), num=10))
-plt.legend()
-plt.grid(True)
-
-plt.tight_layout()  # Adjust layout to prevent label cutoff
-plt.show()
-
 
 # %%
