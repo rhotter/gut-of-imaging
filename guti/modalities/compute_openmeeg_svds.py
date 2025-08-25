@@ -4,7 +4,7 @@ Compute SVDs of leadfields using OpenMEEG.
 
 #%%
 import sys
-sys.path.append('..')
+sys.path.append('../..')
 
 import os.path as op
 import openmeeg as om
@@ -12,11 +12,15 @@ import numpy as np
 import h5py
 import matplotlib.pyplot as plt
 
+# Add autoreload for interactive development
+%load_ext autoreload
+%autoreload 2
+
 print(__doc__)
 
 # %%
 # Create the BEM hemisphere brain model
-from core import create_bem_model
+from guti.core import create_bem_model
 
 create_bem_model()
 
@@ -111,7 +115,6 @@ plt.show()
 
 #%%
 # Save the SVDs
-import sys
 
 from guti.data_utils import save_svd
 
