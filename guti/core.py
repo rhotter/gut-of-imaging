@@ -298,9 +298,12 @@ def get_bitrate(svd_spectrum: np.ndarray, noise_full_brain: float, time_resoluti
     return (1 / time_resolution) * np.sum(np.log2(1 + svd_spectrum / (noise_full_brain / np.sqrt(n_detectors or len(svd_spectrum)))))
 
 
-def noise_floor_heuristic(svd_spectrum: np.ndarray, heuristic: Literal["power", "first"] = "power", factor: float = 10.) -> float:
+def noise_floor_heuristic(svd_spectrum: np.ndarray, n_detectors: int | None = None, heuristic: Literal["power", "first"] = "power", factor: float = 10.) -> float:
+    n_detectors = n_detectors or len(svd_spectrum)
     if heuristic == "power":
         total_power = np.sum(np.abs(svd_spectrum) ** 2)
-        return np.sqrt(total_power / len(svd_spectrum)) / factor
+        return np.sqrt(total_power / n_detectors) / factor
     elif heuristic == "first":
         return svd_spectrum[0] / factor
+
+# %%
