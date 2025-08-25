@@ -19,7 +19,8 @@ modality_name = "us_analytical"
 # subdir = "grid_sweep"
 # param_key = "grid_resolution_mm"
 # subdir = "us_free_field_analytical"
-subdir = "us_free_field_analytical_n_sources_sweep"
+# subdir = "us_free_field_analytical_n_sources_sweep"
+subdir = "us_free_field_analytical_n_sources_sweep_300khz"
 param_key = "num_brain_grid_points"
 
 variants = list_svd_variants(modality_name, subdir=subdir)
@@ -117,8 +118,6 @@ plt.xlabel("Number of Brain Grid Points")
 plt.ylabel("Bitrate (bits/s)")
 plt.title(f"Bitrate vs Number of SVs for different {param_key} - {modality_name}")
 plt.yscale("log")
-plt.xticks(ticks=np.logspace(np.log10(min(param_values)), np.log10(max(param_values)), num=10))
-plt.yticks(ticks=np.logspace(np.log10(min(bitrates)), np.log10(max(bitrates)), num=10))
 plt.legend()
 plt.grid(True)
 

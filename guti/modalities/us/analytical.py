@@ -32,7 +32,8 @@ print(f"n_sources: {n_sources}, n_sensors: {n_sensors}, temporal_sampling: {temp
 
 domain, medium_original, time_axis, brain_mask, skull_mask, scalp_mask = create_medium()
 
-center_frequency = 1.5e6
+# center_frequency = 1.5e6
+center_frequency = 0.3e6
 
 sources, source_mask = create_sources(domain, time_axis, freq_Hz=1e6, n_sources=n_sources, pad=0, inside=True)
 sensors, sensors_all, receivers_mask = create_receivers(domain, time_axis, freq_Hz=center_frequency, n_sensors=n_sensors, pad=0)
@@ -155,6 +156,7 @@ save_svd(s, 'us_analytical', params=Parameters(
     time_resolution=time_step,
     comment=None
 # ), subdir="us_free_field_analytical")
-), subdir="us_free_field_analytical_n_sources_sweep")
+# ), subdir="us_free_field_analytical_n_sources_sweep")
+), subdir="us_free_field_analytical_n_sources_sweep_300khz")
 
 # %%
