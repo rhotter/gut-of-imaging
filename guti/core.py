@@ -18,63 +18,15 @@ SKULL_CONDUCTIVITY = 0.03
 N_SOURCES_DEFAULT = 100
 N_SENSORS_DEFAULT = 100
 
-
-def get_source_positions(n_sources: int = N_SOURCES_DEFAULT) -> np.ndarray:
-    warnings.warn("get_source_positions is deprecated. Use get_grid_positions instead.")
-    
-    # sample random positions inside a hemisphere
-    positions = np.zeros((n_sources, 3))
-    count = 0
-
-    while count < n_sources:
-        # Sample random point in a cube with side length 2*BRAIN_RADIUS
-        x = np.random.uniform(0, BRAIN_RADIUS * 2)
-        y = np.random.uniform(0, BRAIN_RADIUS * 2)
-        z = np.random.uniform(0, BRAIN_RADIUS * 2)  # Only positive z for hemisphere
-
-        # Check if point is inside the hemisphere
-        distance = np.sqrt((x - BRAIN_RADIUS) ** 2 + (y - BRAIN_RADIUS) ** 2 + z**2)
-
-        if distance <= BRAIN_RADIUS:
-            positions[count] = [x, y, z]
-
-            # # Vector from center of brain to the point
-            # center = np.array([BRAIN_RADIUS, BRAIN_RADIUS, 0])
-            # direction = np.array([x, y, z]) - center
-
-            # # Normalize the direction vector and scale to brain radius
-            # normalized_direction = direction / distance
-
-            # # Place the point on the brain surface
-            # positions[count] = center + normalized_direction * BRAIN_RADIUS
-            count += 1
-    return positions
-
-
 def get_sensor_positions(
     n_sensors: int = N_SENSORS_DEFAULT,
     offset: float = 0,
     start_n: int = 0,
     end_n: int | None = None,
 ) -> np.ndarray:
-    warnings.warn("get_sensor_positions is deprecated. Use get_sensor_positions_spiral instead.")
-    
-    # sample random positions on a hemisphere
-    positions = np.random.randn(n_sensors, 3)
-    positions[:, 2] = np.abs(positions[:, 2])
-    positions = positions / np.linalg.norm(positions, axis=1, keepdims=True)
-    positions = positions * (SCALP_RADIUS + offset) + np.array(
-        [SCALP_RADIUS, SCALP_RADIUS, 0]
-    )
-    return positions[start_n:end_n]
-
-
-def get_sensor_positions_spiral(
-    n_sensors: int = N_SENSORS_DEFAULT,
-    offset: float = 0,
-    start_n: int = 0,
-    end_n: int | None = None,
-) -> np.ndarray:
+    """
+    Get sensor positions uniformly on the surface of a hemisphere.
+    """
     # Deterministic uniform sampling on a hemisphere using a spherical Fibonacci spiral
     golden_angle = np.pi * (3 - np.sqrt(5))
     indices = np.arange(n_sensors)
@@ -96,10 +48,54 @@ def get_sensor_positions_spiral(
     return positions[start_n:end_n]
 
 
+
+def get_grid_positions(grid_spacing_mm: float = 5.0, radius: float = BRAIN_RADIUS) -> np.ndarray:
+    """Generate positions using a uniform 3D grid within the hemisphere.
+
+    Parameters
+    ----------
+    grid_spacing_mm : float
+        Spacing between grid points in mm
+
+    Returns
+    -------
+    positions : ndarray of shape (n_points, 3)
+        Grid positions inside the hemisphere in mm
+    """
+    # Create grid coordinates
+    # Grid extends from 0 to 2*radius in x and y, and 0 to radius in z
+    # to account for brain, skull, and scalp layers
+    x_coords = np.arange(0, 2 * radius + grid_spacing_mm, grid_spacing_mm)
+    y_coords = np.arange(0, 2 * radius + grid_spacing_mm, grid_spacing_mm)
+    z_coords = np.arange(0, radius + grid_spacing_mm, grid_spacing_mm)
+
+    # Create meshgrid
+    X, Y, Z = np.meshgrid(x_coords, y_coords, z_coords, indexing="ij")
+
+    # Flatten to get all grid points
+    grid_points = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
+
+    # Filter points that are inside the hemisphere
+    # Center of hemisphere is at (radius, radius, 0)
+    center = np.array([radius, radius, 0])
+    distances = np.linalg.norm(grid_points - center, axis=1)
+
+    # Keep points inside the hemisphere (distance <= radius and z >= 0)
+    inside_hemisphere = (distances <= radius) & (grid_points[:, 2] >= 0)
+    hemisphere_points = grid_points[inside_hemisphere]
+
+    print(f"Using {len(hemisphere_points)} grid points")
+
+    return hemisphere_points
+
+
+
 def get_voxel_mask(resolution: float = 1, offset: float = 0) -> np.ndarray:
-    # create a voxel mask for the brain
-    # the mask is a 3D array of size (nx, ny, nz)
-    # the mask is 1 for the brain, 2 for the skull, 3 for the scalp and 0 for the rest
+    """
+    Create a voxel mask for the brain.
+    The mask is a 3D array of size (nx, ny, nz)
+    The mask is 1 for the brain, 2 for the skull, 3 for the scalp and 0 for the rest
+    """
     radius = SCALP_RADIUS + offset
     nx = int(2 * radius / resolution)
     ny = int(2 * radius / resolution)
@@ -122,76 +118,10 @@ def get_voxel_mask(resolution: float = 1, offset: float = 0) -> np.ndarray:
 
     return mask
 
-
-def get_source_positions_halton(n_sources: int = N_SOURCES_DEFAULT) -> np.ndarray:
-    warnings.warn("get_source_positions_halton is deprecated. Use get_grid_positions instead.")
-    
-    # Deterministic uniform sampling inside a hemisphere via a low-discrepancy sequence
-    def van_der_corput(num: int, base: int = 2) -> float:
-        vdc, denom = 0.0, 1
-        while num > 0:
-            num, rem = divmod(num, base)
-            denom *= base
-            vdc += rem / denom
-        return vdc
-
-    positions = np.zeros((n_sources, 3))
-    for i in range(n_sources):
-        # radial coordinate via uniform volume sampling
-        u = (i + 0.5) / n_sources
-        r = BRAIN_RADIUS * u ** (1 / 3)
-        # direction via Hammersley sequence (bases 2 and 3)
-        theta = np.arccos(van_der_corput(i, 3))
-        phi = 2 * np.pi * van_der_corput(i, 2)
-        x = r * np.sin(theta) * np.cos(phi) + BRAIN_RADIUS
-        y = r * np.sin(theta) * np.sin(phi) + BRAIN_RADIUS
-        z = r * np.cos(theta)
-        positions[i] = [x, y, z]
-    return positions
-
-
-def get_grid_positions(grid_spacing_mm: float = 5.0) -> np.ndarray:
-    """Generate positions using a uniform 3D grid within the hemisphere.
-
-    Parameters
-    ----------
-    grid_spacing_mm : float
-        Spacing between grid points in mm
-
-    Returns
-    -------
-    positions : ndarray of shape (n_points, 3)
-        Grid positions inside the hemisphere in mm
-    """
-    # Create grid coordinates
-    # Grid extends from 0 to 2*SCALP_RADIUS in x and y, and 0 to SCALP_RADIUS in z
-    # to account for brain, skull, and scalp layers
-    x_coords = np.arange(0, 2 * SCALP_RADIUS + grid_spacing_mm, grid_spacing_mm)
-    y_coords = np.arange(0, 2 * SCALP_RADIUS + grid_spacing_mm, grid_spacing_mm)
-    z_coords = np.arange(0, SCALP_RADIUS + grid_spacing_mm, grid_spacing_mm)
-
-    # Create meshgrid
-    X, Y, Z = np.meshgrid(x_coords, y_coords, z_coords, indexing="ij")
-
-    # Flatten to get all grid points
-    grid_points = np.column_stack([X.ravel(), Y.ravel(), Z.ravel()])
-
-    # Filter points that are inside the hemisphere
-    # Center of hemisphere is at (SCALP_RADIUS, SCALP_RADIUS, 0)
-    center = np.array([SCALP_RADIUS, SCALP_RADIUS, 0])
-    distances = np.linalg.norm(grid_points - center, axis=1)
-
-    # Keep points inside the hemisphere (distance <= SCALP_RADIUS and z >= 0)
-    inside_hemisphere = (distances <= SCALP_RADIUS) & (grid_points[:, 2] >= 0)
-    hemisphere_points = grid_points[inside_hemisphere]
-
-    print(f"Using {len(hemisphere_points)} grid points")
-
-    return hemisphere_points
-
+# ---- FEM mesh functions ----
 
 def create_hemisphere(radius, n_phi=8, n_theta=8):
-    """Create a hemisphere mesh.
+    """Create a hemisphere FEM mesh.
 
     Parameters
     ----------
@@ -352,7 +282,7 @@ def create_bem_model():
         f.write(f"Skull       {SKULL_CONDUCTIVITY}\n")
 
     # Generate dipole positions and orientations
-    positions = get_source_positions_halton(N_SOURCES_DEFAULT)
+    positions = get_grid_positions(N_SOURCES_DEFAULT)
     orientations = get_random_orientations(N_SOURCES_DEFAULT)
 
     # Write dipoles to file
@@ -362,6 +292,7 @@ def create_bem_model():
                 f"{pos[0]:.6f}\t{pos[1]:.6f}\t{pos[2]:.6f}\t{ori[0]:.6f}\t{ori[1]:.6f}\t{ori[2]:.6f}\n"
             )
 
+# ---- Bitrate calculations ----
 
 def get_bitrate(svd_spectrum: np.ndarray, noise_full_brain: float, time_resolution: float = 1., n_detectors: int | None = None) -> float:
     return (1 / time_resolution) * np.sum(np.log2(1 + svd_spectrum / (noise_full_brain / np.sqrt(n_detectors or len(svd_spectrum)))))
