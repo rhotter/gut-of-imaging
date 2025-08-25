@@ -5,6 +5,7 @@ import torch
 import numpy as np
 
 import matplotlib.pyplot as plt
+import matplotlib.ticker as mticker
 from guti.data_utils import save_svd
 from guti.modalities.us.utils import create_medium, create_sources, create_receivers, simulate_free_field_propagation
 import time
@@ -132,6 +133,18 @@ print("Done!")
 # %%
 
 plt.semilogy(s)
+ax = plt.gca()
+ax.set_xlabel("Singular value index")
+ax.set_ylabel("Singular value")
+ax.xaxis.set_major_locator(mticker.MaxNLocator(nbins=20, integer=True, min_n_ticks=10))
+ax.xaxis.set_minor_locator(mticker.AutoMinorLocator())
+ax.yaxis.set_major_locator(mticker.LogLocator(base=10.0, numticks=30))
+ax.yaxis.set_minor_locator(mticker.LogLocator(base=10.0, subs=np.arange(2, 10) * 0.1, numticks=30))
+log_formatter = mticker.LogFormatter(base=10.0, labelOnlyBase=False)
+ax.yaxis.set_major_formatter(log_formatter)
+ax.yaxis.set_minor_formatter(log_formatter)
+ax.grid(True, which='both', linestyle='--', alpha=0.3)
+plt.tight_layout()
 
 from guti.data_utils import Parameters
 

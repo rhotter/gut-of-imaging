@@ -1,4 +1,4 @@
-from guti.core import get_voxel_mask, get_sensor_positions, get_source_positions, get_sensor_positions
+from guti.core import get_voxel_mask, get_sensor_positions, get_grid_positions, get_sensor_positions
 from jwave import FourierSeries, FiniteDifferences
 from jwave.geometry import Domain, Medium, TimeAxis
 from jwave.geometry import Sources, Sensors
@@ -67,7 +67,7 @@ def create_sources(domain, time_axis, freq_Hz=0.25e6, inside: bool = False, n_so
     if not inside:
         sensor_positions = get_sensor_positions(n_sensors=n_sources, offset=8)
     else:
-        sensor_positions = get_source_positions(n_sources=n_sources)
+        sensor_positions = get_grid_positions(n_sources=n_sources)
     # Convert to voxel indices
     sensor_positions_voxels = jnp.floor(sensor_positions / (jnp.array(dx) * 1e3)).astype(jnp.int32)
     x_real, y_real, z_real = sensor_positions[:, 0], sensor_positions[:, 1], sensor_positions[:, 2]
