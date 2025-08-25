@@ -43,10 +43,9 @@ for k, v in sorted_variants:
     bits = get_bitrate(s, noise_floor)
 
     # Store values for plotting
-    x_values.append(param_value)  # 1/grid_resolution
+    x_values.append(param_value)
     y_values.append(bits)
 
-# Create single plot with all data points
 plt.plot(x_values, y_values, 'o-', markersize=8, linewidth=2)
 plt.xlabel(f"{param_key}")
 plt.ylabel("Bits")
