@@ -108,6 +108,7 @@ def create_receivers(domain, time_axis, freq_Hz=0.25e6, n_sensors: int = 200, st
         sensor_positions = get_sensor_positions_spiral(n_sensors=n_sensors, offset=8, start_n=start_n, end_n=end_n)
     else:
         sensor_positions = get_sensor_positions(n_sensors=n_sensors, offset=8, start_n=start_n, end_n=end_n)
+    print("Got sensor positions")
     # Convert to voxel indices
     sensor_positions_voxels = jnp.floor(sensor_positions / (jnp.array(dx) * 1e3)).astype(jnp.int32)
     x_real, y_real, z_real = sensor_positions[:, 0], sensor_positions[:, 1], sensor_positions[:, 2]
